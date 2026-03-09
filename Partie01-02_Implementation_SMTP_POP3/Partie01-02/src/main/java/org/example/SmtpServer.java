@@ -1,4 +1,5 @@
 package org.example;
+
 import java.io.*;
 import java.net.*;
 import java.text.SimpleDateFormat;
@@ -6,7 +7,7 @@ import java.util.*;
 
 public class SmtpServer {
     // Use a custom port (e.g., 2525) to avoid needing special privileges.
-    private static final int PORT = 25;
+    private static final int PORT = 2525;
 
     public static void main(String[] args) {
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
@@ -31,10 +32,10 @@ class SmtpSession extends Thread {
 
     // Finite state machine for the SMTP session
     private enum SmtpState {
-        CONNECTED,    // Connection established; waiting for HELO/EHLO.
+        CONNECTED, // Connection established; waiting for HELO/EHLO.
         HELO_RECEIVED, // HELO/EHLO received; ready for MAIL FROM.
         MAIL_FROM_SET, // MAIL FROM command processed; ready for RCPT TO.
-        RCPT_TO_SET,   // At least one RCPT TO received; ready for DATA.
+        RCPT_TO_SET, // At least one RCPT TO received; ready for DATA.
         DATA_RECEIVING // DATA command received; reading email content.
     }
 
@@ -53,7 +54,7 @@ class SmtpSession extends Thread {
     @Override
     public void run() {
         try {
-            in  = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             out = new PrintWriter(socket.getOutputStream(), true);
 
             // Send initial greeting (RFC 5321 specifies a 220 response)
@@ -74,7 +75,13 @@ class SmtpSession extends Thread {
                         state = SmtpState.HELO_RECEIVED;
                         out.println("250 OK: Message accepted for delivery");
                     } else {
-                        dataBuffer.append(line).append("\r\n");
+                        // RFC 5321 : Gestion du Dot-stuffing
+                        // Si la ligne commence par deux points, on retire le premier
+                        if (line.startsWith("..")) {
+                            dataBuffer.append(line.substring(1)).append("\r\n");
+                        } else {
+                            dataBuffer.append(line).append("\r\n");
+                        }
                     }
                     continue;
                 }
@@ -97,6 +104,12 @@ class SmtpSession extends Thread {
                     case "DATA":
                         handleData();
                         break;
+                    case "RSET":
+                        handleRset();
+                        break;
+                    case "NOOP":
+                        out.println("250 OK");
+                        break;
                     case "QUIT":
                         handleQuit();
                         return; // Terminate session after QUIT.
@@ -105,15 +118,20 @@ class SmtpSession extends Thread {
                         break;
                 }
             }
-            // Si la boucle se termine alors que nous étions en train de recevoir les données,
-            // cela signifie que la connexion a été interrompue avant la réception du point final.
+            // Si la boucle se termine alors que nous étions en train de recevoir les
+            // données,
+            // cela signifie que la connexion a été interrompue avant la réception du point
+            // final.
             if (state == SmtpState.DATA_RECEIVING) {
                 System.err.println("Connection interrupted during DATA phase. Email incomplete, not stored.");
             }
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
-            try { socket.close(); } catch (IOException e) { /* ignore */ }
+            try {
+                socket.close();
+            } catch (IOException e) {
+                /* ignore */ }
         }
     }
 
@@ -127,7 +145,8 @@ class SmtpSession extends Thread {
 
     private void handleMailFrom(String arg) {
         // Vérifier que l'argument correspond exactement au format "FROM:<email>"
-        // L'expression régulière vérifie que la chaîne commence par "FROM:", suivie de zéro ou plusieurs espaces,
+        // L'expression régulière vérifie que la chaîne commence par "FROM:", suivie de
+        // zéro ou plusieurs espaces,
         // puis d'une adresse email entre chevrons et rien d'autre.
         if (!arg.toUpperCase().matches("^FROM:\\s*<[^>]+>$")) {
             out.println("501 Syntax error in parameters or arguments");
@@ -135,7 +154,7 @@ class SmtpSession extends Thread {
             return;
         }
         // Extraire l'adresse email en retirant "FROM:" et les chevrons.
-        String potentialEmail = arg.substring(5).trim();  // Extrait ce qui suit "FROM:"
+        String potentialEmail = arg.substring(5).trim(); // Extrait ce qui suit "FROM:"
         // Retirer les chevrons (< et >)
         potentialEmail = potentialEmail.substring(1, potentialEmail.length() - 1).trim();
 
@@ -166,17 +185,17 @@ class SmtpSession extends Thread {
         }
 
         // Check if the recipient's directory exists.
-        // The user directory is assumed to be "mailserver/username" where username is the part before '@'.
+        // The user directory is assumed to be "mailserver/username" where username is
+        // the part before '@'.
         String username = email.split("@")[0];
         File userDir = new File(System.getProperty("user.dir") + "/mailserver/" + username);
         if (!userDir.exists()) {
-            boolean created = userDir.mkdirs();  // Create user directory
+            boolean created = userDir.mkdirs(); // Create user directory
             if (!created) {
                 out.println("550 Failed to create user directory");
                 return;
             }
         }
-
 
         recipients.add(email);
         state = SmtpState.RCPT_TO_SET;
@@ -196,6 +215,14 @@ class SmtpSession extends Thread {
         out.println("221 smtp.example.com Service closing transmission channel");
     }
 
+    private void handleRset() {
+        state = SmtpState.HELO_RECEIVED;
+        sender = "";
+        recipients.clear();
+        dataBuffer.setLength(0);
+        out.println("250 OK: Session reset");
+    }
+
     // Helper to extract the first token (command) from the input line.
     private String extractToken(String line) {
         String[] parts = line.split(" ");
@@ -208,7 +235,8 @@ class SmtpSession extends Thread {
         return index > 0 ? line.substring(index).trim() : "";
     }
 
-    // Simple email extraction: removes angle brackets and performs a basic validation.
+    // Simple email extraction: removes angle brackets and performs a basic
+    // validation.
     private String extractEmail(String input) {
         // Remove any surrounding angle brackets.
         input = input.replaceAll("[<>]", "");
@@ -234,7 +262,7 @@ class SmtpSession extends Thread {
 
             // Ensure the directory exists
             if (!userDir.exists()) {
-                userDir.mkdirs();  // Create if missing
+                userDir.mkdirs(); // Create if missing
             }
 
             // Define email file path
@@ -258,4 +286,3 @@ class SmtpSession extends Thread {
         }
     }
 }
-

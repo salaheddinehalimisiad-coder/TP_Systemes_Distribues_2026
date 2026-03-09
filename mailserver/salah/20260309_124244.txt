@@ -1,0 +1,6 @@
+From: test@test.com
+To: salah@exemple.com
+Date: lun., 09 mars 2026 12:42:44 +0100
+Subject: Test Email
+
+Ceci est une ligne normale.
