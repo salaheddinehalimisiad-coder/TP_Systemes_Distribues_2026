@@ -5,23 +5,65 @@ import java.net.*;
 import java.util.*;
 
 public class Pop3Server {
-    private static final int PORT = 110; // Custom port to avoid conflicts
-    private List<File> emails;
-    private List<Boolean> deletionFlags = new ArrayList<>();
+    private final int port;
+    private ServerSocket serverSocket;
+    private boolean running = false;
+    private ServerLogger logger;
+    private List<Pop3Session> activeSessions = Collections.synchronizedList(new ArrayList<>());
 
-    public static void main(String[] args) {
-        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            System.out.println("POP3 Server started on port " + PORT);
-            while (true) {
-                Socket clientSocket = serverSocket.accept();
-                System.out.println("Connection from " + clientSocket.getInetAddress());
-                new Pop3Session(clientSocket).start();
+    public Pop3Server(int port, ServerLogger logger) {
+        this.port = port;
+        this.logger = logger;
+    }
+
+    public void start() {
+        new Thread(() -> {
+            try {
+                serverSocket = new ServerSocket(port);
+                running = true;
+                logger.log("POP3 Server started on port " + port);
+                while (running) {
+                    try {
+                        Socket clientSocket = serverSocket.accept();
+                        logger.log("POP3: New connection from " + clientSocket.getInetAddress());
+                        Pop3Session session = new Pop3Session(clientSocket, logger, this);
+                        activeSessions.add(session);
+                        session.start();
+                    } catch (IOException e) {
+                        if (running) logger.log("POP3 Accept error: " + e.getMessage());
+                    }
+                }
+            } catch (IOException e) {
+                logger.log("POP3 could not listen on port " + port);
             }
+        }).start();
+    }
+
+    public void stop() {
+        running = false;
+        try {
+            if (serverSocket != null) serverSocket.close();
+            for (Pop3Session session : activeSessions) {
+                session.closeSocket();
+            }
+            activeSessions.clear();
+            logger.log("POP3 Server stopped.");
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.log("POP3 error stopping: " + e.getMessage());
         }
     }
 
+    public void removeSession(Pop3Session session) {
+        activeSessions.remove(session);
+    }
+
+    public int getConnectedCount() {
+        return activeSessions.size();
+    }
+
+    public static void main(String[] args) {
+        new Pop3Server(110, System.out::println).start();
+    }
 }
 
 class Pop3Session extends Thread {
@@ -32,11 +74,19 @@ class Pop3Session extends Thread {
     private File userDir;
     private List<File> emails;
     private boolean authenticated;
-    private List<Boolean> deletionFlags; // Déclaration correcte
+    private List<Boolean> deletionFlags;
+    private ServerLogger logger;
+    private Pop3Server server;
 
-    public Pop3Session(Socket socket) {
+    public Pop3Session(Socket socket, ServerLogger logger, Pop3Server server) {
         this.socket = socket;
+        this.logger = logger;
+        this.server = server;
         this.authenticated = false;
+    }
+
+    public void closeSocket() {
+        try { if (socket != null) socket.close(); } catch (IOException e) {}
     }
 
     @Override
@@ -45,7 +95,7 @@ class Pop3Session extends Thread {
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             out = new PrintWriter(socket.getOutputStream(), true);
 
-            out.println("+OK POP3 server ready");
+            send("+OK POP3 server ready");
 
             String line;
             // 1. Lit chaque ligne envoyée par le client (via le flux 'in') tant que la
@@ -54,7 +104,7 @@ class Pop3Session extends Thread {
 
                 // 2. Affiche dans la console du serveur ce qui a été reçu (utile pour le
                 // débogage).
-                System.out.println("Received: " + line);
+                logger.log("POP3 Received: " + line);
 
                 // 3. Découpe la ligne reçue en deux parties maximum, en utilisant l'espace
                 // comme séparateur.
@@ -97,7 +147,7 @@ class Pop3Session extends Thread {
                         handleRset();
                         break;
                     case "NOOP":
-                        out.println("+OK");
+                        send("+OK");
                         break;
                     case "CAPA":
                         handleCapa();
@@ -106,7 +156,7 @@ class Pop3Session extends Thread {
                         handleQuit();
                         return; // Terminer la session
                     default:
-                        out.println("-ERR Unknown command");
+                        send("-ERR Unknown command");
                         break;
                 }
 
@@ -114,13 +164,13 @@ class Pop3Session extends Thread {
             // Si la boucle se termine, cela signifie que la connexion a été interrompue
             // sans QUIT.
             if (authenticated) {
-                System.err.println(
-                        "La connexion a été interrompue sans recevoir QUIT. Les suppressions marquées ne seront pas appliquées.");
+                logger.log("POP3 Info: Connection interrupted without QUIT for " + username);
             }
         } catch (IOException e) {
-            System.err.println("Erreur lors de la lecture de la connexion : " + e.getMessage());
+            logger.log("POP3 Session error: " + e.getMessage());
         } finally {
             try {
+                server.removeSession(this);
                 socket.close();
             } catch (IOException e) {
                 /* Ignore */ }
@@ -243,7 +293,7 @@ class Pop3Session extends Thread {
         for (int i = 0; i < deletionFlags.size(); i++) {
             deletionFlags.set(i, false);
         }
-        out.println("+OK Deletion marks reset");
+        send("+OK Deletion marks reset");
     }
 
     private void handleQuit() {
@@ -253,7 +303,7 @@ class Pop3Session extends Thread {
                 if (deletionFlags.get(i)) {
                     File emailFile = emails.get(i);
                     if (emailFile.delete()) {
-                        System.out.println("Deleted email: " + emailFile.getAbsolutePath());
+                        logger.log("POP3: Deleted email " + emailFile.getName());
                         emails.remove(i);
                         deletionFlags.remove(i);
                     } else {
@@ -262,16 +312,19 @@ class Pop3Session extends Thread {
                 }
             }
         }
-        out.println("+OK POP3 server signing off");
+        send("+OK POP3 server signing off");
     }
 
     private void handleCapa() {
         out.println("+OK Capability list follows");
-        out.println("USER");
-        out.println("RESP-CODES");
-        out.println("EXPIRE 31");
-        out.println("Implementation: CustomJavaPop3Server");
-        out.println(".");
+        send("USER");
+        send("RESP-CODES");
+        send("EXPIRE 31");
+        send("Implementation: CustomJavaPop3Server");
     }
 
+    private void send(String msg) {
+        logger.log("SERVER -> " + msg);
+        out.println(msg);
+    }
 }

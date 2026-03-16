@@ -18,19 +18,64 @@ import java.util.*;
  *   Tout etat          -> (LOGOUT)        -> LOGOUT
  */
 public class ImapServer {
-    private static final int PORT = 143;
+    private final int port;
+    private ServerSocket serverSocket;
+    private boolean running = false;
+    private ServerLogger logger;
+    private List<ImapSession> activeSessions = Collections.synchronizedList(new ArrayList<>());
+
+    public ImapServer(int port, ServerLogger logger) {
+        this.port = port;
+        this.logger = logger;
+    }
+
+    public void start() {
+        new Thread(() -> {
+            try {
+                serverSocket = new ServerSocket(port);
+                running = true;
+                logger.log("IMAP Server started on port " + port);
+                while (running) {
+                    try {
+                        Socket clientSocket = serverSocket.accept();
+                        logger.log("IMAP: New connection from " + clientSocket.getInetAddress());
+                        ImapSession session = new ImapSession(clientSocket, logger, this);
+                        activeSessions.add(session);
+                        session.start();
+                    } catch (IOException e) {
+                        if (running) logger.log("IMAP Accept error: " + e.getMessage());
+                    }
+                }
+            } catch (IOException e) {
+                logger.log("IMAP could not listen on port " + port);
+            }
+        }).start();
+    }
+
+    public void stop() {
+        running = false;
+        try {
+            if (serverSocket != null) serverSocket.close();
+            for (ImapSession session : activeSessions) {
+                session.closeSocket();
+            }
+            activeSessions.clear();
+            logger.log("IMAP Server stopped.");
+        } catch (IOException e) {
+            logger.log("IMAP error stopping: " + e.getMessage());
+        }
+    }
+
+    public void removeSession(ImapSession session) {
+        activeSessions.remove(session);
+    }
+
+    public int getConnectedCount() {
+        return activeSessions.size();
+    }
 
     public static void main(String[] args) {
-        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            System.out.println("[IMAP] Serveur demarre sur le port " + PORT);
-            while (true) {
-                Socket clientSocket = serverSocket.accept();
-                System.out.println("[IMAP] Nouvelle connexion de " + clientSocket.getInetAddress());
-                new ImapSession(clientSocket).start();
-            }
-        } catch (IOException e) {
-            System.err.println("[IMAP] Erreur de demarrage sur le port " + PORT + " : " + e.getMessage());
-        }
+        new ImapServer(143, System.out::println).start();
     }
 }
 
@@ -58,8 +103,17 @@ class ImapSession extends Thread {
     // Repertoire racine de stockage des mails (même que SMTP/POP3)
     private static final String MAIL_ROOT = "mailserver";
 
-    public ImapSession(Socket socket) {
+    private ServerLogger logger;
+    private ImapServer server;
+
+    public ImapSession(Socket socket, ServerLogger logger, ImapServer server) {
         this.socket = socket;
+        this.logger = logger;
+        this.server = server;
+    }
+
+    public void closeSocket() {
+        try { if (socket != null) socket.close(); } catch (IOException e) {}
     }
 
     @Override
@@ -74,20 +128,24 @@ class ImapSession extends Thread {
 
             String line;
             while (state != ImapState.LOGOUT && (line = in.readLine()) != null) {
-                System.out.println("[IMAP][C→S] " + line);
+                logger.log("IMAP Received: " + line);
                 handleCommand(line.trim());
             }
 
         } catch (IOException e) {
-            System.err.println("[IMAP] Session interrompue : " + e.getMessage());
+            logger.log("IMAP Session error: " + e.getMessage());
         } finally {
-            try { socket.close(); } catch (IOException ignored) {}
+            try {
+                server.removeSession(this);
+                socket.close();
+            } catch (IOException e) {
+                /* ignore */ }
         }
     }
 
     /** Envoie une ligne au client avec terminaison CRLF (RFC 9051). */
     private void send(String response) {
-        System.out.println("[IMAP][S→C] " + response);
+        logger.log("SERVER -> " + response);
         out.print(response + "\r\n");
         out.flush();
     }
