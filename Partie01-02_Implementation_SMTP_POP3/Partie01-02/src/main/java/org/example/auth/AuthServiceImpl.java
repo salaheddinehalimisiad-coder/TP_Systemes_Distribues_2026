@@ -1,6 +1,10 @@
 package org.example.auth;
 
+import org.json.JSONObject;
+
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.rmi.server.UnicastRemoteObject;
 import java.rmi.RemoteException;
 import java.util.Map;
@@ -9,8 +13,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class AuthServiceImpl extends UnicastRemoteObject implements IAuthService {
 
-    // Fichier stockant les utilisateurs "username:password"
-    private static final String USERS_FILE = "users.txt";
+    // Fichier stockant les utilisateurs en JSON
+    private static final String USERS_FILE = "users.json";
 
     // Stockage des tokens en mémoire : Token -> Username
     private final Map<String, String> activeTokens = new ConcurrentHashMap<>();
@@ -24,12 +28,36 @@ public class AuthServiceImpl extends UnicastRemoteObject implements IAuthService
         File file = new File(USERS_FILE);
         if (!file.exists()) {
             try {
-                file.createNewFile();
-                // Utilisateur par défaut pour les tests
-                registerUser("admin", "admin123");
+                JSONObject initialData = new JSONObject();
+                initialData.put("admin", "admin123");
+                Files.write(Paths.get(USERS_FILE), initialData.toString(4).getBytes());
+                System.out.println("Fichier users.json créé avec l'utilisateur par défaut 'admin'.");
             } catch (IOException e) {
-                System.err.println("Erreur de création du fichier: " + e.getMessage());
+                System.err.println("Erreur de création du fichier JSON: " + e.getMessage());
             }
+        }
+    }
+
+    private synchronized JSONObject loadUsers() {
+        try {
+            if (!new File(USERS_FILE).exists()) {
+                initFile();
+            }
+            String content = new String(Files.readAllBytes(Paths.get(USERS_FILE)));
+            return new JSONObject(content);
+        } catch (Exception e) {
+            System.err.println("Erreur au chargement des utilisateurs: " + e.getMessage());
+            return new JSONObject();
+        }
+    }
+
+    private synchronized boolean saveUsers(JSONObject users) {
+        try {
+            Files.write(Paths.get(USERS_FILE), users.toString(4).getBytes());
+            return true;
+        } catch (IOException e) {
+            System.err.println("Erreur à la sauvegarde des utilisateurs: " + e.getMessage());
+            return false;
         }
     }
 
@@ -38,8 +66,7 @@ public class AuthServiceImpl extends UnicastRemoteObject implements IAuthService
         if (checkUserCredentials(username, password)) {
             String token = UUID.randomUUID().toString();
             activeTokens.put(token, username);
-            System.out.println("Utlisateur " + username + " authentifié. Token généré : " + token);
-            // On retourne la réponse format JSON
+            System.out.println("Utilisateur " + username + " authentifié. Token généré : " + token);
             return "{\"token\": \"" + token + "\"}";
         }
         System.out.println("Échec d'authentification pour l'utilisateur " + username);
@@ -58,48 +85,60 @@ public class AuthServiceImpl extends UnicastRemoteObject implements IAuthService
 
     @Override
     public boolean registerUser(String username, String password) throws RemoteException {
-        if (userExists(username)) {
+        JSONObject users = loadUsers();
+        if (users.has(username)) {
             System.out.println("Tentative d'enregistrement échouée : l'utilisateur " + username + " existe déjà.");
             return false;
         }
-        try (FileWriter fw = new FileWriter(USERS_FILE, true);
-             BufferedWriter bw = new BufferedWriter(fw);
-             PrintWriter out = new PrintWriter(bw)) {
-            out.println(username + ":" + password);
+        users.put(username, password);
+        boolean saved = saveUsers(users);
+        if (saved) {
             System.out.println("Utilisateur " + username + " créé avec succès.");
-            return true;
-        } catch (IOException e) {
-            System.err.println("Erreur lors de l'enregistrement de l'utilisateur: " + e.getMessage());
-            return false;
         }
+        return saved;
     }
 
-    private boolean userExists(String username) {
-        try (BufferedReader br = new BufferedReader(new FileReader(USERS_FILE))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                String[] parts = line.split(":");
-                if (parts.length == 2 && parts[0].equals(username)) {
-                    return true;
-                }
-            }
-        } catch (IOException e) {
-            System.err.println("Erreur de lecture: " + e.getMessage());
+    @Override
+    public boolean updateUser(String username, String newPassword) throws RemoteException {
+        JSONObject users = loadUsers();
+        if (!users.has(username)) {
+            System.out.println("Mise à jour échouée : l'utilisateur " + username + " n'existe pas.");
+            return false;
         }
-        return false;
+        users.put(username, newPassword);
+        boolean saved = saveUsers(users);
+        if (saved) {
+            System.out.println("Mot de passe mis à jour pour " + username);
+        }
+        return saved;
+    }
+
+    @Override
+    public boolean deleteUser(String username) throws RemoteException {
+        JSONObject users = loadUsers();
+        if (!users.has(username)) {
+            return false;
+        }
+        users.remove(username);
+        boolean saved = saveUsers(users);
+        if (saved) {
+            System.out.println("Utilisateur " + username + " supprimé avec succès.");
+            // Déconnecter s'il avait un token actif
+            activeTokens.values().removeIf(val -> val.equals(username));
+        }
+        return saved;
+    }
+
+    @Override
+    public boolean userExists(String username) throws RemoteException {
+        JSONObject users = loadUsers();
+        return users.has(username);
     }
 
     private boolean checkUserCredentials(String username, String password) {
-        try (BufferedReader br = new BufferedReader(new FileReader(USERS_FILE))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                String[] parts = line.split(":");
-                if (parts.length == 2 && parts[0].equals(username) && parts[1].equals(password)) {
-                    return true;
-                }
-            }
-        } catch (IOException e) {
-            System.err.println("Erreur de lecture: " + e.getMessage());
+        JSONObject users = loadUsers();
+        if (users.has(username)) {
+            return users.getString(username).equals(password);
         }
         return false;
     }

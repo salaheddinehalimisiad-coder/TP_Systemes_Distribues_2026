@@ -193,15 +193,35 @@ class Pop3Session extends Thread {
             out.println("-ERR USER required first");
             return;
         }
-        // Pour simplifier, on suppose que "userDir" est le dossier de l'utilisateur
-        // déjà défini
+        
+        // --- DEBUT RMI CHECK ---
+        try {
+            java.rmi.registry.Registry registry = java.rmi.registry.LocateRegistry.getRegistry("127.0.0.1", 1099);
+            org.example.auth.IAuthService authService = (org.example.auth.IAuthService) registry.lookup("AuthService");
+            String result = authService.authenticate(username, arg);
+            if (result.contains("error")) {
+                 out.println("-ERR Authentication failed");
+                 return;
+            }
+        } catch (Exception e) {
+            logger.log("Erreur RMI (POP3 auth): " + e.getMessage());
+            out.println("-ERR Authorization server unavailable");
+            return;
+        }
+        // --- FIN RMI CHECK ---
+
         authenticated = true;
+        // Créer le dossier s'il n'existe pas encore (nouvel utilisateur RMI sans email)
+        if (!userDir.exists()) {
+            userDir.mkdirs();
+        }
+        
         // Chargez les fichiers du répertoire dans une ArrayList mutable
         File[] files = userDir.listFiles();
         if (files == null) {
             emails = new ArrayList<>();
         } else {
-            emails = new ArrayList<>(Arrays.asList(files));
+            emails = new ArrayList<>(java.util.Arrays.asList(files));
         }
         // Initialisez les flags de suppression : aucun email n'est marqué (false)
         deletionFlags = new ArrayList<>();

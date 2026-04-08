@@ -200,9 +200,6 @@ class SmtpSession extends Thread {
 
     private void handleMailFrom(String arg) {
         // Vérifier que l'argument correspond exactement au format "FROM:<email>"
-        // L'expression régulière vérifie que la chaîne commence par "FROM:", suivie de
-        // zéro ou plusieurs espaces,
-        // puis d'une adresse email entre chevrons et rien d'autre.
         if (!arg.toUpperCase().matches("^FROM:\\s*<[^>]+>$")) {
             send("501 Syntax error in parameters or arguments");
             send(arg.toUpperCase());
@@ -218,6 +215,23 @@ class SmtpSession extends Thread {
             out.println("501 Syntax error in parameters or arguments");
             return;
         }
+        
+        // --- DEBUT RMI CHECK ---
+        String username = email.split("@")[0];
+        try {
+            java.rmi.registry.Registry registry = java.rmi.registry.LocateRegistry.getRegistry("127.0.0.1", 1099);
+            org.example.auth.IAuthService authService = (org.example.auth.IAuthService) registry.lookup("AuthService");
+            if (!authService.userExists(username)) {
+                send("550 No such user here");
+                return;
+            }
+        } catch (Exception e) {
+            logger.log("Erreur RMI (SMTP vérif): " + e.getMessage());
+            send("451 Requested action aborted: RMIServer unavailable");
+            return;
+        }
+        // --- FIN RMI CHECK ---
+
         sender = email;
         state = SmtpState.MAIL_FROM_SET;
         send("250 OK");

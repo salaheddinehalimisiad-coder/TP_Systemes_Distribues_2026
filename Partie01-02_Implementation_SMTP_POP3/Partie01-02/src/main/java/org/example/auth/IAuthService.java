@@ -24,4 +24,19 @@ public interface IAuthService extends Remote {
      * Enregistre un nouvel utilisateur.
      */
     boolean registerUser(String username, String password) throws RemoteException;
+
+    /**
+     * Modifie le mot de passe d'un utilisateur existant.
+     */
+    boolean updateUser(String username, String newPassword) throws RemoteException;
+
+    /**
+     * Supprime un compte utilisateur.
+     */
+    boolean deleteUser(String username) throws RemoteException;
+
+    /**
+     * Vérifie si un utilisateur existe (sans mot de passe).
+     */
+    boolean userExists(String username) throws RemoteException;
 }

@@ -216,16 +216,32 @@ class ImapSession extends Thread {
         }
 
         String user = creds[0].replace("\"", "");
-        File dir    = new File(MAIL_ROOT + "/" + user);
-
-        if (dir.exists() && dir.isDirectory()) {
-            this.username = user;
-            this.state    = ImapState.AUTHENTICATED;
-            send(tag + " OK LOGIN successful - welcome " + user);
-        } else {
-            // User folder not found
-            send(tag + " NO [AUTHENTICATIONFAILED] Authentication failed");
+        String pass = creds[1].replace("\"", "");
+        
+        // --- DEBUT RMI CHECK ---
+        try {
+            java.rmi.registry.Registry registry = java.rmi.registry.LocateRegistry.getRegistry("127.0.0.1", 1099);
+            org.example.auth.IAuthService authService = (org.example.auth.IAuthService) registry.lookup("AuthService");
+            String result = authService.authenticate(user, pass);
+            if (result.contains("error")) {
+                 send(tag + " NO [AUTHENTICATIONFAILED] Authentication failed");
+                 return;
+            }
+        } catch (Exception e) {
+            logger.log("Erreur RMI (IMAP auth): " + e.getMessage());
+            send(tag + " NO [SERVERBUG] Authorization server unavailable");
+            return;
         }
+        // --- FIN RMI CHECK ---
+
+        File dir = new File(MAIL_ROOT + "/" + user);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+
+        this.username = user;
+        this.state    = ImapState.AUTHENTICATED;
+        send(tag + " OK LOGIN successful - welcome " + user);
     }
 
     // ================================================================
