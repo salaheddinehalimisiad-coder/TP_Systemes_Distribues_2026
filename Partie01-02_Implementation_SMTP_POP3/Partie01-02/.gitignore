@@ -1,10 +1,20 @@
 target/
-!.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
+*.class
 
-### IntelliJ IDEA ###
-.idea/modules.xml
+# Fichiers de log
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Dossier local de la base de données mail
+mailserver/
+
+# Fichiers sécurisés RMI
+users.json
+users.txt
 .idea/jarRepositories.xml
 .idea/compiler.xml
 .idea/libraries/
