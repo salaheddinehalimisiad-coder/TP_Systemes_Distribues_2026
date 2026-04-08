@@ -1,5 +1,6 @@
 package org.example.auth;
 
+import org.example.UIUtils;
 import javax.swing.*;
 import java.awt.*;
 import java.rmi.registry.LocateRegistry;
@@ -14,31 +15,60 @@ public class AdminClientGui extends JFrame {
     private JLabel lblStatus;
 
     public AdminClientGui() {
-        setTitle("RMI Admin Client - User Management");
-        setSize(400, 250);
+        setTitle("RMI USER ADMINISTRATION");
+        setSize(500, 400);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLocationRelativeTo(null);
-        setLayout(new BorderLayout());
+        UIUtils.applyPremiumTheme(this);
 
-        connectToRmi();
+        JPanel mainPanel = new JPanel();
+        UIUtils.setStandardLayout(mainPanel);
 
-        JPanel formPanel = new JPanel(new GridLayout(2, 2, 10, 10));
-        formPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        // Header
+        JPanel headerPanel = UIUtils.createCardPanel();
+        headerPanel.setLayout(new BorderLayout());
+        headerPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        headerPanel.add(UIUtils.createHeaderLabel("USER MANAGEMENT"), BorderLayout.CENTER);
+        
+        lblStatus = new JLabel("Status: Disconnected");
+        lblStatus.setForeground(UIUtils.COLOR_TEXT_DIM);
+        headerPanel.add(lblStatus, BorderLayout.SOUTH);
+        
+        mainPanel.add(headerPanel, BorderLayout.NORTH);
 
-        formPanel.add(new JLabel("Utilisateur :"));
-        txtUsername = new JTextField();
-        formPanel.add(txtUsername);
+        // Form
+        JPanel formPanel = UIUtils.createCardPanel();
+        formPanel.setLayout(new GridBagLayout());
+        formPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(5, 5, 5, 5);
 
-        formPanel.add(new JLabel("Mot de passe :"));
-        txtPassword = new JPasswordField();
-        formPanel.add(txtPassword);
+        gbc.gridx = 0; gbc.gridy = 0;
+        JLabel lblUser = new JLabel("Login:");
+        lblUser.setForeground(UIUtils.COLOR_TEXT);
+        formPanel.add(lblUser, gbc);
 
-        add(formPanel, BorderLayout.CENTER);
+        gbc.gridx = 1;
+        txtUsername = new JTextField(15);
+        formPanel.add(txtUsername, gbc);
 
-        JPanel btnPanel = new JPanel(new FlowLayout());
-        JButton btnAdd = new JButton("Ajouter");
-        JButton btnUpdate = new JButton("Modifier");
-        JButton btnDelete = new JButton("Supprimer");
+        gbc.gridx = 0; gbc.gridy = 1;
+        JLabel lblPass = new JLabel("Password:");
+        lblPass.setForeground(UIUtils.COLOR_TEXT);
+        formPanel.add(lblPass, gbc);
+
+        gbc.gridx = 1;
+        txtPassword = new JPasswordField(15);
+        formPanel.add(txtPassword, gbc);
+
+        mainPanel.add(formPanel, BorderLayout.CENTER);
+
+        // Buttons
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
+        btnPanel.setOpaque(false);
+        JButton btnAdd = UIUtils.createStyledButton("REGISTER", UIUtils.COLOR_SUCCESS);
+        JButton btnUpdate = UIUtils.createStyledButton("UPDATE", UIUtils.COLOR_PRIMARY);
+        JButton btnDelete = UIUtils.createStyledButton("DELETE", UIUtils.COLOR_DANGER);
 
         btnAdd.addActionListener(e -> handleAdd());
         btnUpdate.addActionListener(e -> handleUpdate());
@@ -48,20 +78,22 @@ public class AdminClientGui extends JFrame {
         btnPanel.add(btnUpdate);
         btnPanel.add(btnDelete);
 
-        add(btnPanel, BorderLayout.SOUTH);
+        mainPanel.add(btnPanel, BorderLayout.SOUTH);
 
-        lblStatus = new JLabel("Status: Prêt", SwingConstants.CENTER);
-        lblStatus.setForeground(Color.BLUE);
-        add(lblStatus, BorderLayout.NORTH);
+        add(mainPanel);
+        setLocationRelativeTo(null);
+        connectToRmi();
     }
 
     private void connectToRmi() {
         try {
             Registry registry = LocateRegistry.getRegistry("127.0.0.1", 1099);
             authService = (IAuthService) registry.lookup("AuthService");
+            lblStatus.setText("Status: CONNECTED TO RMI");
+            lblStatus.setForeground(UIUtils.COLOR_SUCCESS);
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Impossible de se connecter au serveur RMI. Assurez-vous qu'il est démarré.", "Erreur RMI", JOptionPane.ERROR_MESSAGE);
-            System.exit(1);
+            lblStatus.setText("Status: RMI CONNECTION FAILED");
+            lblStatus.setForeground(UIUtils.COLOR_DANGER);
         }
     }
 
@@ -70,15 +102,14 @@ public class AdminClientGui extends JFrame {
         String p = new String(txtPassword.getPassword());
         try {
             if (authService.registerUser(u, p)) {
-                lblStatus.setText("Succès : Utilisateur ajouté.");
-                lblStatus.setForeground(new Color(0, 128, 0));
+                lblStatus.setText("SUCCESS: User '" + u + "' created.");
+                lblStatus.setForeground(UIUtils.COLOR_SUCCESS);
             } else {
-                lblStatus.setText("Erreur : Utilisateur existe déjà.");
-                lblStatus.setForeground(Color.RED);
+                lblStatus.setText("ERROR: User already exists.");
+                lblStatus.setForeground(UIUtils.COLOR_DANGER);
             }
         } catch (Exception ex) {
-            ex.printStackTrace();
-            lblStatus.setText("Erreur RMI.");
+            lblStatus.setText("RMI EXCEPTION");
         }
     }
 
@@ -87,15 +118,14 @@ public class AdminClientGui extends JFrame {
         String p = new String(txtPassword.getPassword());
         try {
             if (authService.updateUser(u, p)) {
-                lblStatus.setText("Succès : Mot de passe mis à jour.");
-                lblStatus.setForeground(new Color(0, 128, 0));
+                lblStatus.setText("SUCCESS: Password updated.");
+                lblStatus.setForeground(UIUtils.COLOR_SUCCESS);
             } else {
-                lblStatus.setText("Erreur : Utilisateur introuvable.");
-                lblStatus.setForeground(Color.RED);
+                lblStatus.setText("ERROR: User not found.");
+                lblStatus.setForeground(UIUtils.COLOR_DANGER);
             }
         } catch (Exception ex) {
-            ex.printStackTrace();
-            lblStatus.setText("Erreur RMI.");
+            lblStatus.setText("RMI EXCEPTION");
         }
     }
 
@@ -103,24 +133,20 @@ public class AdminClientGui extends JFrame {
         String u = txtUsername.getText();
         try {
             if (authService.deleteUser(u)) {
-                lblStatus.setText("Succès : Utilisateur supprimé.");
-                lblStatus.setForeground(new Color(0, 128, 0));
+                lblStatus.setText("SUCCESS: User deleted.");
+                lblStatus.setForeground(UIUtils.COLOR_SUCCESS);
                 txtUsername.setText("");
                 txtPassword.setText("");
             } else {
-                lblStatus.setText("Erreur : Utilisateur introuvable.");
-                lblStatus.setForeground(Color.RED);
+                lblStatus.setText("ERROR: User not found.");
+                lblStatus.setForeground(UIUtils.COLOR_DANGER);
             }
         } catch (Exception ex) {
-            ex.printStackTrace();
-            lblStatus.setText("Erreur RMI.");
+            lblStatus.setText("RMI EXCEPTION");
         }
     }
 
     public static void main(String[] args) {
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception ignored) {}
         SwingUtilities.invokeLater(() -> new AdminClientGui().setVisible(true));
     }
 }

@@ -3,40 +3,47 @@ package org.example;
 import javax.swing.*;
 import java.awt.*;
 
-/**
- * Main Launcher for the Mail System Administration.
- * Starts all three supervision interfaces (SMTP, POP3, IMAP).
- */
 public class MailServerLauncher extends JFrame {
 
     public MailServerLauncher() {
-        setTitle("Mail System Administration - TP Distributed Systems");
-        setSize(400, 200);
+        setTitle("Distributed Mail System - Control Center");
+        setSize(500, 350);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(new GridLayout(3, 1, 10, 10));
+        
+        UIUtils.applyPremiumTheme(this);
+        JPanel mainPanel = new JPanel();
+        UIUtils.setStandardLayout(mainPanel);
+        mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
 
-        JButton btnSmtp = new JButton("Launch SMTP Supervision");
-        JButton btnPop3 = new JButton("Launch POP3 Supervision");
-        JButton btnImap = new JButton("Launch IMAP Supervision");
+        JLabel title = UIUtils.createHeaderLabel("MAIL SYSTEM CONTROL CENTER");
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        mainPanel.add(title);
+        mainPanel.add(Box.createRigidArea(new Dimension(0, 30)));
+
+        JButton btnSmtp = UIUtils.createStyledButton("LAUNCH SMTP SUPERVISION", UIUtils.COLOR_PRIMARY);
+        JButton btnPop3 = UIUtils.createStyledButton("LAUNCH POP3 SUPERVISION", UIUtils.COLOR_PRIMARY);
+        JButton btnImap = UIUtils.createStyledButton("LAUNCH IMAP SUPERVISION", UIUtils.COLOR_PRIMARY);
+
+        btnSmtp.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
+        btnPop3.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
+        btnImap.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
 
         btnSmtp.addActionListener(e -> new SmtpGui());
         btnPop3.addActionListener(e -> new Pop3Gui());
         btnImap.addActionListener(e -> new ImapGui());
 
-        add(btnSmtp);
-        add(btnPop3);
-        add(btnImap);
+        mainPanel.add(btnSmtp);
+        mainPanel.add(Box.createRigidArea(new Dimension(0, 15)));
+        mainPanel.add(btnPop3);
+        mainPanel.add(Box.createRigidArea(new Dimension(0, 15)));
+        mainPanel.add(btnImap);
 
+        add(mainPanel);
         setLocationRelativeTo(null);
         setVisible(true);
     }
 
     public static void main(String[] args) {
-        // Set Look and Feel to System default
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception ignored) {}
-
         SwingUtilities.invokeLater(MailServerLauncher::new);
     }
 }
