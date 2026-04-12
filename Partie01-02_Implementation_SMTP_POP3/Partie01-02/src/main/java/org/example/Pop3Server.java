@@ -63,6 +63,11 @@ public class Pop3Server {
 
     public static void main(String[] args) {
         new Pop3Server(110, System.out::println).start();
+        try {
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 }
 

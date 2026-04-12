@@ -73,5 +73,14 @@ public class MailServerLauncher extends JFrame {
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(MailServerLauncher::new);
+        try {
+            // Maintenir le processus en vie pour mvn exec:java
+            Object lock = new Object();
+            synchronized (lock) {
+                lock.wait();
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 }

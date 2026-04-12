@@ -18,7 +18,10 @@ public class AuthServerApp {
             registry.rebind("AuthService", authService);
             
             System.out.println(" Serveur d'Authentification RMI démarré sur le port " + port);
-            System.out.println("En attente de connexions RMI...");
+            System.out.println(" En attente de connexions RMI...");
+
+            // Empêcher le thread principal de se terminer (nécessaire avec mvn exec:java)
+            Thread.currentThread().join();
             
         } catch (Exception e) {
             System.err.println(" Erreur au démarrage du serveur d'authentification : " + e.getMessage());

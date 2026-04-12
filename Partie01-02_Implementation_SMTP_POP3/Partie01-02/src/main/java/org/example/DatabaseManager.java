@@ -141,6 +141,36 @@ public class DatabaseManager {
         }
     }
 
+    // Get user statistics
+    public static Map<String, Object> getUserStats(String username) {
+        Map<String, Object> stats = new HashMap<>();
+        String sql = "SELECT COUNT(*) as count, SUM(LENGTH(content)) as size FROM emails WHERE recipient = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, username);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    stats.put("totalEmails", rs.getInt("count"));
+                    stats.put("totalSize", rs.getLong("size"));
+                }
+            }
+            
+            // Unread count
+            String sqlUnread = "SELECT COUNT(*) FROM emails WHERE recipient = ? AND is_read = 0";
+            try (PreparedStatement stmt2 = conn.prepareStatement(sqlUnread)) {
+                stmt2.setString(1, username);
+                try (ResultSet rs2 = stmt2.executeQuery()) {
+                    if (rs2.next()) {
+                        stats.put("unreadEmails", rs2.getInt(1));
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return stats;
+    }
+
     // Delete User
     public static boolean deleteUser(String username) {
         String sql = "DELETE FROM users WHERE username = ?";

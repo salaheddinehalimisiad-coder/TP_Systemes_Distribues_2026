@@ -9,6 +9,18 @@ Bienvenue sur le dépôt du projet de **Systèmes Distribués (2025/2026)** de l
 
 ---
 
+## 💎 EMP Mail : Interface Web de Nouvelle Génération (SaaS)
+
+Nous avons modernisé l'expérience utilisateur en intégrant une interface Web de classe mondiale, transformant ce projet technique en un produit orienté SaaS :
+
+- **Design Premium "Marvelous"** : Interface basée sur le **Glassmorphism**, avec un **Mode Sombre** intelligent et des animations fluides (Animate.css).
+- **Dashboard Analytique** : Visualisation en temps réel de l'activité du compte via des graphiques dynamiques (**Chart.js**).
+- **Multilingue (i18n)** : Support complet et dynamique du **Français**, **Anglais** et **Arabe** (avec gestion automatique du mode **RTL**).
+- **Expérience Utilisateur (UX)** : Skeleton screens pour le chargement, notifications toasts, et actions rapides au survol des emails.
+- **Architecture REST** : Backend propulsé par **Javalin (Port 8080)** servant de pont entre le Web et le réseau distribué.
+
+---
+
 ## 🎯 Architecture du Projet
 
 Le projet a évolué d'une version monolithique locale vers un véritable système orienté Services (SOA) :
@@ -20,9 +32,9 @@ Le projet a évolué d'une version monolithique locale vers un véritable systè
 2. **Service Central d'Authentification** (Java RMI) :
    - Moteur décentralisé (Port `1099`) générant des Tokens (`UUID`) sous format `JSON`.
    - Garantit une validation de l'état (Thread-Safe) lors de l'accès simultané de plusieurs serveurs.
-3. **Interfaces de Supervision (GUI)** :
-   - Interfaces Swing pour gérer et superviser asynchroniquement les serveurs (Logs, Compteurs, Start/Stop).
-   - Client RMI d'administration des utilisateurs.
+3. **Interfaces de Supervision (GUI) & Web** :
+   - Interfaces Swing pour gérer et superviser asynchroniquement les serveurs.
+   - **Portail Web Moderne (EMP Mail)** accessible via navigateur.
 
 ---
 
@@ -30,7 +42,7 @@ Le projet a évolué d'une version monolithique locale vers un véritable systè
 
 ### Prérequis
 - Java JDK 17 (ou supérieur).
-- Apache Maven (pour la résolution du package `org.json`).
+- Apache Maven.
 
 ### Installation et Déploiement
 
@@ -40,54 +52,26 @@ Le projet a évolué d'une version monolithique locale vers un véritable systè
    cd TP_Systemes_Distribues_2026/Partie01-02_Implementation_SMTP_POP3/Partie01-02
    ```
 
-2. **Compiler les dépendances (CI prête)** :
+2. **Compiler le projet** :
    ```bash
    mvn clean package
    ```
 
 3. **Lancer les composants (L'Ordre est Strict)** :
    - **Étape 1** : Lancer le Registre RMI : Exécuter `org.example.auth.AuthServerApp`.
-   - **Étape 2** : (Optionnel) Créer des comptes avec `org.example.auth.AdminClientGui`.
-   - **Étape 3** : Lancer les Serveurs Mails avec `org.example.MailServerLauncher` et cliquer sur "Start Server" sur chaque GUI.
-
----
-
-## 🧪 Scénarios de tests (via Telnet)
-
-Une fois tous les serveurs démarrés, vous pouvez communiquer via TCP brut :
-
-**Test SMTP :**
-```bash
-telnet localhost 2525
-HELO test
-MAIL FROM:<admin@mon-domaine.com>
-RCPT TO:<salah@mon-domaine.com>
-DATA
-Sujet: Bonjour
-Ceci est le corps du message.
-.
-QUIT
-```
-
-**Test POP3 :**
-```bash
-telnet localhost 110
-USER salah
-PASS admin123
-LIST
-RETR 1
-QUIT
-```
+   - **Étape 2** : Lancer les Serveurs Mails : `org.example.Pop3Server` et `org.example.SmtpServer`.
+   - **Étape 3** : Lancer le portail Web : `org.example.web.MailRestController`.
+   
+4. **Accéder à l'interface** :
+   Ouvrez votre navigateur sur [http://localhost:8080](http://localhost:8080).
 
 ---
 
 ## ⚙️ Intégration Continue (CI/CD)
 
 Ce projet est scanné et compilé automatiquement via **GitHub Actions**.  
-À chaque `Push` ou `Pull Request` sur la banche `main`, un agent Ubuntu :
-- Monte l'environnement JDK 17.
-- Injecte les dépendances Maven.
-- Valide la consistance du code et génère l'artefact.
+À chaque `Push` sur la banche `main`, un agent Ubuntu valide la consistance du code et génère l'artefact de production.
 
 ---
 *Projet réalisé par Halimi Mohamed Salah Eddine - SIAD (2025/2026)*
+*Modernisé par Antigravity AI*

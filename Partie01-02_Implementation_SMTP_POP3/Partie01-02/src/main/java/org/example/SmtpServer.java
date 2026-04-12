@@ -65,6 +65,11 @@ public class SmtpServer {
     public static void main(String[] args) {
         // Mode console par défaut
         new SmtpServer(2525, System.out::println).start();
+        try {
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 }
 

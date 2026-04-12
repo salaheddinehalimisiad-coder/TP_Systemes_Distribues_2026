@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMP Mail | Enterprise Distributed Mail System</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Login Page -->
+    <div id="login-page">
+        <div class="login-auth-card">
+            <div class="brand" style="justify-content: center; padding: 0;">
+                <div class="brand-icon"><i class="fas fa-paper-plane"></i></div>
+                <div class="brand-name">EMP <span id="txt-brand-mail-login">Mail</span></div>
+            </div>
+            <h2 id="txt-login-welcome">Bienvenue</h2>
+            <p id="txt-login-desc">Connectez-vous à votre portail sécurisé</p>
+            <form id="login-form">
+                <div class="auth-input-group">
+                    <label id="txt-login-user">Nom d'utilisateur</label>
+                    <input type="text" id="username" placeholder="Entrez votre identifiant" required>
+                </div>
+                <div class="auth-input-group">
+                    <label id="txt-login-pass">Mot de passe</label>
+                    <input type="password" id="password" placeholder="••••••••" required>
+                </div>
+                <div id="login-error" style="color: var(--error); font-size: 14px; margin-bottom: 20px; text-align: left; display: none;"></div>
+                <button type="submit" class="btn-login" id="txt-btn-login">Connexion</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="app-wrapper">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon"><i class="fas fa-paper-plane"></i></div>
+                <div class="brand-name">EMP <span id="txt-brand-mail">Mail</span></div>
+            </div>
+            
+            <button class="btn-compose" onclick="openCompose()">
+                <i class="fas fa-feather-alt"></i>
+                <span id="txt-new">Nouveau</span>
+            </button>
+
+            <div class="nav-menu">
+                <a href="#" class="nav-link" onclick="showDashboard()">
+                    <i class="fas fa-chart-pie"></i>
+                    <span id="txt-nav-dashboard">Tableau de bord</span>
+                </a>
+                <a href="#" class="nav-link active" onclick="showInbox()">
+                    <i class="fas fa-inbox"></i>
+                    <span id="txt-nav-inbox">Boîte de réception</span>
+                </a>
+                <a href="#" class="nav-link" onclick="showSettings()">
+                    <i class="fas fa-cog"></i>
+                    <span id="txt-nav-settings">Paramètres</span>
+                </a>
+                <a href="#" class="nav-link">
+                    <i class="far fa-star"></i>
+                    <span id="txt-nav-fav">Favoris</span>
+                </a>
+                <a href="#" class="nav-link">
+                    <i class="far fa-paper-plane"></i>
+                    <span id="txt-nav-sent">Envoyés</span>
+                </a>
+                <a href="#" class="nav-link">
+                    <i class="far fa-trash-alt"></i>
+                    <span id="txt-nav-trash">Corbeille</span>
+                </a>
+            </div>
+
+            <div class="sidebar-footer">
+                <a href="#" class="nav-link" onclick="logout()">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span id="txt-nav-logout">Déconnexion</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="main-stage">
+            <header class="header">
+                <div class="search-bar">
+                    <i class="fas fa-search" id="txt-search-icon"></i>
+                    <input type="text" id="search-input" placeholder="Rechercher des emails ou des contacts...">
+                </div>
+                <div class="user-controls">
+                    <div class="icon-btn" id="txt-notif-btn"><i class="far fa-bell"></i></div>
+                    <div class="icon-btn" onclick="toggleDarkMode()" id="dark-mode-btn"><i class="fas fa-moon"></i></div>
+                    <div class="icon-btn" onclick="showSettings()"><i class="fas fa-cog"></i></div>
+                    <div class="profile-circle" id="user-initials">U</div>
+                </div>
+            </header>
+
+            <main class="content-area">
+                <!-- Dashboard Section -->
+                <div class="view-card" id="dashboard-section" style="display: none;">
+                    <div class="view-header">
+                        <div class="view-title">Aperçu du Compte</div>
+                    </div>
+                    <div style="padding: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+                        <div class="dashboard-widget" style="background:var(--bg-white); border:1px solid var(--border-color); border-radius:12px; padding:20px; box-shadow:0 2px 4px rgba(0,0,0,0.05)">
+                            <h3 style="font-size:16px; margin-bottom:15px; color:var(--text-secondary)" id="txt-dash-activity">Volume d'emails (7 derniers jours)</h3>
+                            <canvas id="activityChart"></canvas>
+                        </div>
+                        <div class="dashboard-widget" style="background:var(--bg-white); border:1px solid var(--border-color); border-radius:12px; padding:20px; box-shadow:0 2px 4px rgba(0,0,0,0.05)">
+                            <h3 style="font-size:16px; margin-bottom:15px; color:var(--text-secondary)" id="txt-dash-storage">Utilisation Stockage</h3>
+                            <div style="height:200px; display:flex; align-items:center; justify-content:center; flex-direction:column">
+                                <canvas id="storageChart" style="max-height:150px"></canvas>
+                                <p id="storageText" style="margin-top:10px; font-weight:600; font-size:14px"></p>
+                            </div>
+                        </div>
+                        <div class="dashboard-widget" style="background:var(--bg-white); border:1px solid var(--border-color); border-radius:12px; padding:20px; box-shadow:0 2px 4px rgba(0,0,0,0.05)">
+                            <h3 style="font-size:16px; margin-bottom:15px; color:var(--text-secondary)" id="txt-dash-stats">Statistiques Rapides</h3>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+                                <div style="background:var(--bg-main); padding:15px; border-radius:8px; text-align:center">
+                                    <div style="font-size:24px; font-weight:700; color:var(--primary)" id="stat-total-emails">0</div>
+                                    <div style="font-size:12px; color:var(--text-secondary)" id="txt-stat-total">Total Emails</div>
+                                </div>
+                                <div style="background:var(--bg-main); padding:15px; border-radius:8px; text-align:center">
+                                    <div style="font-size:24px; font-weight:700; color:var(--error)" id="stat-unread-emails">0</div>
+                                    <div style="font-size:12px; color:var(--text-secondary)" id="txt-stat-unread">Non lus</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Section -->
+                <div class="view-card" id="settings-section" style="display: none;">
+                    <div class="view-header">
+                        <div class="view-title" id="txt-set-title">Paramètres du Compte</div>
+                    </div>
+                    <div style="padding: 32px; max-width: 600px;">
+                        <div class="auth-input-group">
+                            <label id="txt-set-name">Nom d'affichage</label>
+                            <input type="text" value="Salah Eddine" id="settings-display-name">
+                        </div>
+                        <div class="auth-input-group">
+                            <label id="txt-set-lang">Langue de l'interface</label>
+                            <select id="language-select" onchange="changeLanguage(this.value)" style="width:100%; height:48px; border:1px solid var(--border-color); border-radius:4px; padding:0 16px; font-size:16px; background:var(--sidebar-bg); color:var(--text-main);">
+                                <option value="fr">Français (FR)</option>
+                                <option value="en">English (US)</option>
+                                <option value="ar">العربية (DZ)</option>
+                            </select>
+                        </div>
+                        <div style="margin-top:24px; display:flex; gap:16px">
+                            <button class="btn-send" style="background:var(--primary)" onclick="saveSettings()">
+                                <span id="txt-set-save">Enregistrer les modifications</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="view-card" id="inbox-section">
+                    <div class="view-header">
+                        <div class="view-title" id="txt-inbox-title">Boîte de réception</div>
+                        <div class="user-controls">
+                            <div class="icon-btn" onclick="loadInbox()"><i class="fas fa-sync-alt"></i></div>
+                            <div class="icon-btn"><i class="fas fa-ellipsis-v"></i></div>
+                        </div>
+                    </div>
+                    <div class="email-list" id="messages-container">
+                        <!-- Messages are injected here -->
+                    </div>
+                </div>
+
+                <!-- Viewer -->
+                <div class="view-card viewer-content" id="viewer-section">
+                    <div class="viewer-actions">
+                        <div class="icon-btn" onclick="showInbox()"><i class="fas fa-arrow-left"></i></div>
+                        <div style="flex: 1"></div>
+                        <div class="icon-btn" onclick="deleteCurrentMessage()"><i class="far fa-trash-alt"></i></div>
+                        <div class="icon-btn"><i class="far fa-envelope-open"></i></div>
+                        <div class="icon-btn"><i class="fas fa-ellipsis-h"></i></div>
+                    </div>
+                    <div class="viewer-header-info">
+                        <h1 class="viewer-subject" id="view-subject">Sujet du message</h1>
+                        <div class="viewer-user-meta">
+                            <div class="viewer-avatar" id="view-avatar">?</div>
+                            <div>
+                                <div style="font-weight: 600; font-size: 16px;" id="view-from">Expéditeur</div>
+                                <div style="color: var(--text-secondary); font-size: 14px;" id="view-to">à moi</div>
+                            </div>
+                            <div style="flex: 1"></div>
+                            <div style="color: var(--text-secondary); font-size: 14px;" id="view-time">Il y a 2 heures</div>
+                        </div>
+                        <div class="viewer-body" id="view-body">
+                            <!-- Body content -->
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Compose Modal Overlays -->
+    <div id="compose-overlay" class="modal-overlay">
+        <div class="composer">
+            <div class="composer-header">
+                <span style="font-weight: 600;">Nouveau message</span>
+                <i class="fas fa-times" onclick="closeCompose()" style="cursor: pointer;"></i>
+            </div>
+            <form id="send-form" class="composer-body">
+                <input type="text" id="send-to" class="composer-input" placeholder="À :" required>
+                <input type="text" id="send-subject" class="composer-input" placeholder="Objet" required>
+                <textarea id="send-content" class="composer-textarea" placeholder="Rédiger votre message..."></textarea>
+                <div class="composer-footer">
+                    <button type="submit" class="btn-send">Envoyer le message</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" style="position: fixed; top: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none;"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
