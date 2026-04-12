@@ -1,6 +1,7 @@
 const API_URL = '/api';
 let authToken = localStorage.getItem('auth_token');
 let currentMessages = [];
+let currentCategory = 'primary';
 let selectedMessageId = null;
 
 // Initialisation
@@ -67,7 +68,7 @@ function showToast(message, type = 'info') {
 
 // --- Navigation Utilities ---
 function hideAllSections() {
-    const sections = ['inbox-section', 'dashboard-section', 'viewer-section', 'settings-section'];
+    const sections = ['inbox-section', 'dashboard-section', 'viewer-section', 'settings-section', 'contacts-section', 'admin-section'];
     sections.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -85,31 +86,168 @@ function showSection(id) {
 
 function showInbox() {
     showSection('inbox-section');
-    updateNavSelection(1);
+    setActiveNav('nav-inbox');
     selectedMessageId = null;
     loadInbox();
+    // Clear notification dot
+    const dot = document.querySelector('#nav-inbox .nav-dot');
+    if (dot) dot.remove();
 }
 
 function showDashboard() {
     showSection('dashboard-section');
-    updateNavSelection(0);
+    setActiveNav('nav-dashboard');
     loadDashboardStats();
 }
 
 function showSettings() {
     showSection('settings-section');
-    updateNavSelection(2);
+    setActiveNav('nav-settings');
 }
 
-function updateNavSelection(index) {
-    document.querySelectorAll('.nav-link').forEach((l, i) => {
-        if (i === index) l.classList.add('active');
-        else l.classList.remove('active');
+function showAdmin() {
+    showSection('admin-section');
+    setActiveNav('nav-admin');
+    showAdminTab('users');
+}
+
+function showAdminTab(tab) {
+    document.getElementById('admin-users-tab').style.display = tab === 'users' ? 'block' : 'none';
+    document.getElementById('admin-cluster-tab').style.display = tab === 'cluster' ? 'block' : 'none';
+    
+    if (tab === 'users') loadAdminUsers();
+    else if (tab === 'cluster') loadClusterStatus();
+}
+
+async function loadClusterStatus() {
+    const list = document.getElementById('cluster-node-list');
+    list.innerHTML = '<div style="padding:20px;"><i class="fas fa-circle-notch fa-spin"></i> Audit du cluster en cours...</div>';
+    try {
+        const res = await fetch(`${API_URL}/admin/cluster`, { headers: { 'Authorization': authToken } });
+        const data = await res.json();
+        
+        document.getElementById('current-node-name').textContent = data.currentNode;
+        
+        list.innerHTML = data.nodes.map(n => `
+            <div style="background:var(--bg-white); border:1px solid var(--border-color); border-radius:12px; padding:20px; transition:var(--transition); box-shadow:0 4px 12px rgba(0,0,0,0.05);">
+                <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                    <span style="font-weight:700;">${n.name}</span>
+                    <span class="admin-badge ${n.status === 'Online' ? 'badge-active' : ''}" style="background:${n.status==='Online'?'#e6f4ea':'#fce8e6'}; color:${n.status==='Online'?'#1e8e3e':'#d93025'};">${n.status}</span>
+                </div>
+                <div style="font-size:12px; color:var(--text-secondary); display:flex; gap:16px;">
+                    <span><i class="fas fa-tachometer-alt"></i> ${n.latency}</span>
+                    <span><i class="fas fa-server"></i> REST API: 8080</span>
+                </div>
+            </div>
+        `).join('');
+    } catch (err) {
+        list.innerHTML = '<div style="color:var(--error); padding:20px;">Échec de la communication avec le contrôleur de cluster.</div>';
+    }
+}
+
+function showContacts() {
+    showSection('contacts-section');
+    setActiveNav('nav-fav');
+    loadContacts();
+}
+
+function updateNavSelection(navId) {
+    document.querySelectorAll('.nav-link').forEach(l => {
+        if (l.id === navId || (l.getAttribute('onclick') && l.getAttribute('onclick').includes(navId))) {
+             l.classList.add('active');
+        } else {
+             l.classList.remove('active');
+        }
     });
+}
+// Specific nav update helper
+function setActiveNav(id) {
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active');
 }
 
 function showViewer() {
     showSection('viewer-section');
+}
+
+function showContacts() {
+    showSection('contacts-section');
+    updateNavSelection(3);
+    loadContacts();
+}
+
+function showSent() {
+    // Sent emails not stored separately - show info toast
+    showToast(currentLang === 'ar' ? 'صندوق المرسل سيتم دعمه قريباً' :
+        (currentLang === 'en' ? 'Sent folder coming soon (IMAP)' : 'Dossier Envoyés : bientôt disponible (IMAP)'), 'info');
+    showInbox();
+}
+
+async function loadContacts() {
+    const list = document.getElementById('contacts-list');
+    list.innerHTML = '<div style="padding:20px; color:var(--text-secondary);"><i class="fas fa-circle-notch fa-spin"></i> Chargement...</div>';
+    try {
+        const res = await fetch(`${API_URL}/contacts`, { headers: { 'Authorization': authToken } });
+        if (res.status === 401) return logout();
+        const contacts = await res.json();
+        list.innerHTML = contacts.map(c => `
+            <div style="background:var(--bg-main); border:1px solid var(--border-color); border-radius:12px; padding:20px; display:flex; align-items:center; gap:14px; cursor:pointer; transition:var(--transition);" 
+                 onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border-color)'"
+                 onclick="composeToContact('${c.email}')">
+                <div style="width:48px;height:48px;background:linear-gradient(135deg,#1a73e8,#9333ea);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:18px;flex-shrink:0;">${c.initials}</div>
+                <div>
+                    <div style="font-weight:600;">${c.username}</div>
+                    <div style="font-size:12px;color:var(--text-secondary);">${c.email}</div>
+                </div>
+                <div style="margin-left:auto;"><i class="fas fa-paper-plane" style="color:var(--primary);"></i></div>
+            </div>
+        `).join('');
+        if (contacts.length === 0) {
+            list.innerHTML = '<p style="color:var(--text-secondary); padding:20px;">Aucun contact trouvé.</p>';
+        }
+    } catch (err) {
+        list.innerHTML = '<p style="color:var(--error); padding:20px;">Erreur de chargement des contacts.</p>';
+    }
+}
+
+function composeToContact(email) {
+    openCompose();
+    document.getElementById('send-to').value = email;
+    document.getElementById('send-subject').focus();
+}
+
+function showAdmin() {
+    showSection('admin-section');
+    updateNavSelection(4); // Or appropriate index
+    loadAdminUsers();
+}
+
+async function loadAdminUsers() {
+    const list = document.getElementById('admin-user-list');
+    list.innerHTML = '<tr><td colspan="4" style="padding:20px; text-align:center;"><i class="fas fa-circle-notch fa-spin"></i> Chargement...</td></tr>';
+    try {
+        const res = await fetch(`${API_URL}/admin/users`, { headers: { 'Authorization': authToken } });
+        if (res.status === 401) return logout();
+        if (res.status === 403) {
+            showToast('Accès refusé', 'error');
+            return showDashboard();
+        }
+        const users = await res.json();
+        list.innerHTML = users.map(u => `
+            <tr style="border-bottom:1px solid var(--border-color);">
+                <td style="padding:16px; font-weight:600;">${u.username}</td>
+                <td style="padding:16px;">${u.mail_count || u.count}</td>
+                <td style="padding:16px;">${( (u.storage_used || u.size) / 1024).toFixed(2)} KB</td>
+                <td style="padding:16px;">
+                    <button class="icon-btn" style="color:var(--error);" title="Supprimer (Bientôt)"><i class="fas fa-trash-alt"></i></button>
+                    <button class="icon-btn" style="color:var(--primary);" title="Stats"><i class="fas fa-chart-line"></i></button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        list.innerHTML = '<tr><td colspan="4" style="padding:20px; text-align:center; color:var(--error);">Erreur de chargement.</td></tr>';
+    }
 }
 
 // --- Internationalization (i18n) ---
@@ -124,6 +262,7 @@ const translations = {
         "txt-nav-fav": "Favoris",
         "txt-nav-sent": "Envoyés",
         "txt-nav-trash": "Corbeille",
+        "txt-nav-admin": "Administration",
         "txt-nav-logout": "Déconnexion",
         "txt-login-welcome": "Bienvenue",
         "txt-login-desc": "Connectez-vous à votre portail sécurisé",
@@ -142,7 +281,29 @@ const translations = {
         "txt-set-save": "Enregistrer les modifications",
         "txt-set-dark": "Bascule Mode Sombre",
         "txt-inbox-title": "Boîte de réception",
-        "search-input": "Rechercher des emails ou des contacts..."
+        "search-input": "Rechercher des emails ou des contacts...",
+        "txt-view-to": "à",
+        "txt-view-me": "moi",
+        "txt-compose-title": "Nouveau message",
+        "send-to": "À :",
+        "send-subject": "Objet",
+        "send-content": "Rédiger votre message...",
+        "txt-btn-send": "Envoyer le message",
+        "txt-email-service": "Email de service",
+        "txt-mail-server": "Serveur de Messagerie",
+        "txt-delete-confirm": "Souhaitez-vous supprimer ce message ?",
+        "txt-system-support": "Support Système",
+        "txt-msg-dist": "Email Distribué",
+        "txt-size": "Taille",
+        "txt-bytes": "octets",
+        "txt-storage-of": "sur",
+        "txt-storage-used": "utilisés",
+        "txt-empty-title": "Votre boîte est vide",
+        "txt-empty-desc": "C'est le moment idéal pour démarrer une nouvelle conversation.",
+        "msg-deleted": "Message supprimé",
+        "msg-delete-fail": "Impossible de supprimer le message",
+        "msg-send-success": "Message envoyé !",
+        "msg-send-fail": "Échec de l'envoi SMTP"
     },
     en: {
         "txt-brand-mail": "Mail",
@@ -172,7 +333,29 @@ const translations = {
         "txt-set-save": "Save Changes",
         "txt-set-dark": "Toggle Dark Mode",
         "txt-inbox-title": "Inbox",
-        "search-input": "Search emails or contacts..."
+        "search-input": "Search emails or contacts...",
+        "txt-view-to": "to",
+        "txt-view-me": "me",
+        "txt-compose-title": "New Message",
+        "send-to": "To:",
+        "send-subject": "Subject",
+        "send-content": "Type your message here...",
+        "txt-btn-send": "Send Message",
+        "txt-email-service": "Service Email",
+        "txt-mail-server": "Mail Server",
+        "txt-delete-confirm": "Do you want to delete this message?",
+        "txt-system-support": "System Support",
+        "txt-msg-dist": "Distributed Email",
+        "txt-size": "Size",
+        "txt-bytes": "bytes",
+        "txt-storage-of": "of",
+        "txt-storage-used": "used",
+        "txt-empty-title": "Your inbox is empty",
+        "txt-empty-desc": "Perfect time to start a new conversation.",
+        "msg-deleted": "Message deleted",
+        "msg-delete-fail": "Could not delete",
+        "msg-send-success": "Message sent!",
+        "msg-send-fail": "SMTP send failed"
     },
     ar: {
         "txt-brand-mail": "بريد",
@@ -202,7 +385,29 @@ const translations = {
         "txt-set-save": "حفظ التغييرات",
         "txt-set-dark": "تبديل الوضع الليلي",
         "txt-inbox-title": "صندوق الوارد",
-        "search-input": "ابحث في الرسائل أو جهات الاتصال..."
+        "search-input": "ابحث في الرسائل أو جهات الاتصال...",
+        "txt-view-to": "إلى",
+        "txt-view-me": "أنا",
+        "txt-compose-title": "رسالة جديدة",
+        "send-to": "إلى:",
+        "send-subject": "الموضوع",
+        "send-content": "اكتب رسالتك هنا...",
+        "txt-btn-send": "إرسال الرسالة",
+        "txt-email-service": "بريد الخدمة",
+        "txt-mail-server": "خادم البريد",
+        "txt-delete-confirm": "هل تريد حذف هذه الرسالة؟",
+        "txt-system-support": "دعم النظام",
+        "txt-msg-dist": "رسالة موزعة",
+        "txt-size": "الحجم",
+        "txt-bytes": "بايت",
+        "txt-storage-of": "من",
+        "txt-storage-used": "مستخدمة",
+        "txt-empty-title": "صندوق الوارد فارغ",
+        "txt-empty-desc": "الوقت مثالي لبدء محادثة جديدة.",
+        "msg-deleted": "تم حذف الرسالة",
+        "msg-delete-fail": "تعذر الحذف",
+        "msg-send-success": "تم الإرسال!",
+        "msg-send-fail": "فشل إرسال SMTP"
     }
 };
 
@@ -213,7 +418,7 @@ function translateUI() {
     for (let id in langData) {
         const el = document.getElementById(id);
         if (el) {
-            if (el.tagName === 'INPUT') el.placeholder = langData[id];
+            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = langData[id];
             else el.textContent = langData[id];
         }
     }
@@ -286,6 +491,84 @@ function showApp() {
     document.getElementById('login-page').style.display = 'none';
     const user = localStorage.getItem('auth_user') || 'U';
     document.getElementById('user-initials').textContent = user.charAt(0).toUpperCase();
+    
+    // Admin specific UI
+    if (user === 'admin') {
+        const navAdmin = document.getElementById('nav-admin');
+        if (navAdmin) navAdmin.style.display = 'flex';
+    }
+
+    startInboxPolling();
+    initWebSockets();
+}
+
+let wsSocket = null;
+function initWebSockets() {
+    if (wsSocket) wsSocket.close();
+    
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    wsSocket = new WebSocket(`${protocol}//${location.host}/ws`);
+    
+    wsSocket.onopen = () => {
+        wsSocket.send(JSON.stringify({ type: 'auth', token: authToken }));
+    };
+    
+    wsSocket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'new_mail') {
+            showToast(`${translations[currentLang]['txt-new']} : ${data.subject}`, 'success');
+            // Refresh inbox if currently viewing it
+            if (document.getElementById('inbox-section').style.display !== 'none') {
+                loadInbox();
+            } else {
+                // Add a notification dot to inbox nav
+                const inboxLink = document.getElementById('nav-inbox');
+                if (inboxLink) {
+                    let dot = inboxLink.querySelector('.nav-dot');
+                    if (!dot) {
+                        dot = document.createElement('span');
+                        dot.className = 'nav-dot';
+                        dot.style.cssText = 'width:8px; height:8px; background:#1a73e8; border-radius:50%; margin-left:8px;';
+                        inboxLink.appendChild(dot);
+                    }
+                }
+            }
+            // Update badge immediately
+            pollInboxCount();
+            
+            // Notification sonore discrète
+            new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3').play().catch(() => {});
+        }
+    };
+    
+    wsSocket.onclose = () => {
+        setTimeout(initWebSockets, 5000); // Reconnect
+    };
+}
+
+let _pollInterval = null;
+function startInboxPolling() {
+    if (_pollInterval) return;
+    pollInboxCount();
+    _pollInterval = setInterval(pollInboxCount, 30000);
+}
+
+async function pollInboxCount() {
+    if (!authToken) return;
+    try {
+        const res = await fetch(API_URL + '/inbox/count', { headers: { 'Authorization': authToken } });
+        if (res.status === 401) return;
+        const data = await res.json();
+        const badge = document.getElementById('inbox-badge');
+        if (badge) {
+            if (data.count > 0) {
+                badge.textContent = data.count;
+                badge.style.display = 'inline-block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    } catch (_) {}
 }
 
 // --- Email Logic ---
@@ -293,8 +576,10 @@ function showApp() {
 document.querySelector('.search-bar input').addEventListener('input', (e) => {
     const term = e.target.value.toLowerCase();
     const filtered = currentMessages.filter(msg => 
-        msg.id.toString().includes(term) || 
-        (msg.size && msg.size.toString().includes(term))
+        (msg.id && msg.id.toString().includes(term)) || 
+        (msg.subject && msg.subject.toLowerCase().includes(term)) ||
+        (msg.from && msg.from.toLowerCase().includes(term)) ||
+        (msg.date && msg.date.toLowerCase().includes(term))
     );
     
     if (filtered.length === 0 && term !== "") {
@@ -312,8 +597,8 @@ document.querySelector('.search-bar input').addEventListener('input', (e) => {
 
 async function loadInbox() {
     const container = document.getElementById('messages-container');
-    
-    try {
+    // Si on change de catégorie, on ne recharge pas forcément tout, mais ici on le fait pour synchro
+    if (!currentMessages.length) {
         container.innerHTML = Array(5).fill(0).map(() => `
             <div class="email-item skeleton-shimmer">
                 <div class="skeleton" style="width:24px; height:24px; border-radius:4px"></div>
@@ -322,7 +607,9 @@ async function loadInbox() {
                 <div class="skeleton" style="width:60px; height:16px"></div>
             </div>
         `).join('');
-        
+    }
+    
+    try {
         const response = await fetch(`${API_URL}/inbox`, {
             headers: { 'Authorization': authToken }
         });
@@ -332,6 +619,7 @@ async function loadInbox() {
         currentMessages = await response.json();
         renderMessageList();
     } catch (err) {
+        // ... (error handling remains similar)
         container.innerHTML = `
             <div class="empty-state animate__animated animate__fadeIn">
                 <i class="fas fa-exclamation-triangle" style="color:var(--error); opacity:1"></i>
@@ -343,34 +631,66 @@ async function loadInbox() {
     }
 }
 
-function renderMessageList(messagesToRender = currentMessages) {
+function switchCategory(cat) {
+    currentCategory = cat;
+    document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(`cat-${cat}`).classList.add('active');
+    renderMessageList();
+}
+
+function getCategory(msg) {
+    const from = (msg.from || "").toLowerCase();
+    if (from.match(/facebook|linkedin|twitter|instagram|social|network/)) return 'social';
+    if (from.match(/noreply|marketing|newsletter|amazon|google|promo|offer/)) return 'promotions';
+    return 'primary';
+}
+
+function renderMessageList(messagesToRender = null) {
     const container = document.getElementById('messages-container');
     container.innerHTML = '';
 
-    if (messagesToRender.length === 0) {
+    let list = messagesToRender || currentMessages;
+    
+    // Filter by category if no custom list (search) is provided
+    if (!messagesToRender) {
+        list = list.filter(m => getCategory(m) === currentCategory);
+    }
+
+    if (list.length === 0) {
+        const lang = translations[currentLang];
+        const emptyIcons = {
+            'primary': 'fa-envelope-open-text',
+            'social': 'fa-users',
+            'promotions': 'fa-tag'
+        };
         container.innerHTML = `
-            <div class="empty-state animate__animated animate__fadeIn">
-                <i class="fas fa-envelope-open-text" style="font-size: 80px"></i>
-                <h3>Votre boîte est vide</h3>
-                <p>C'est le moment idéal pour démarrer une nouvelle conversation.</p>
+            <div class="empty-state animate__animated animate__fadeIn" style="padding:100px 20px;">
+                <div style="background:var(--bg-main); width:120px; height:120px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 24px;">
+                    <i class="fas ${emptyIcons[currentCategory] || 'fa-folder-open'}" style="font-size: 48px; color:var(--text-secondary); opacity:0.5;"></i>
+                </div>
+                <h3>${lang["txt-empty-title"]}</h3>
+                <p style="max-width:300px; margin:10px auto;">${lang["txt-empty-desc"]}</p>
             </div>
         `;
         return;
     }
 
-    messagesToRender.forEach((msg, idx) => {
+    list.forEach((msg, idx) => {
+        const lang = translations[currentLang];
         const item = document.createElement('div');
         item.className = `email-item animate__animated animate__fadeInUp`;
         item.style.animationDelay = `${idx * 0.05}s`;
         
+                const senderName = msg.from || `#${msg.id}`;
+        const senderInitial = senderName.charAt(0).toUpperCase();
+        const displayDate = msg.date ? formatEmailDate(msg.date) : new Date().toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'});
         item.innerHTML = `
-            <div class="email-checkbox"><i class="far fa-square"></i></div>
-            <div class="email-sender">Support Système #${msg.id}</div>
+            <div class="email-avatar-mini" style="width:36px;height:36px;background:linear-gradient(135deg,#1a73e8,#9333ea);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;flex-shrink:0;">${senderInitial}</div>
+            <div class="email-sender" style="font-weight:600;">${senderName}</div>
             <div class="email-summary">
-                <span class="email-subject">Email Distribué #${msg.id}</span>
-                <span style="color: var(--text-secondary)"> — Taille : ${msg.size} octets</span>
+                <span class="email-subject">${msg.subject || '(sans objet)'}</span>
             </div>
-            <div class="email-time">${new Date().toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}</div>
+            <div class="email-time">${displayDate}</div>
             <div class="email-actions">
                 <div class="icon-btn" title="Archiver"><i class="fas fa-archive"></i></div>
                 <div class="icon-btn" title="Supprimer" onclick="event.stopPropagation(); deleteMessageDirectly(${msg.id})">
@@ -400,20 +720,65 @@ async function selectMessage(id) {
         const response = await fetch(`${API_URL}/messages/${id}`, {
             headers: { 'Authorization': authToken }
         });
+        
+        if (response.status === 401) return logout();
+        
         const data = await response.json();
+        const lang = translations[currentLang];
 
-        subjectEl.textContent = `Email de service #${id}`;
-        fromEl.textContent = `Serveur de Messagerie #${id}`;
-        avatarEl.textContent = id.toString().charAt(0).toUpperCase();
+                subjectEl.textContent = data.subject || `(sans objet) #${id}`;
+        fromEl.textContent = data.from || `Expéditeur #${id}`;
+        avatarEl.textContent = (data.from || id.toString()).charAt(0).toUpperCase();
         bodyEl.innerHTML = `<div style="white-space: pre-wrap;">${data.body}</div>`;
+        // Hide any previous AI summary box
+        document.getElementById('ai-summary-box').style.display = 'none';
     } catch (err) {
-        bodyEl.textContent = 'Erreur lors de la récupération du contenu.';
+        bodyEl.textContent = currentLang === 'en' ? 'Error retrieving content.' : (currentLang === 'ar' ? 'خطأ في استرداد المحتوى' : 'Erreur lors de la récupération du contenu.');
     }
+}
+
+async function summarizeCurrentEmail() {
+    if (!selectedMessageId) return;
+    const btn = document.getElementById('btn-ai-summarize');
+    const box = document.getElementById('ai-summary-box');
+    const textEl = document.getElementById('ai-summary-text');
+
+    btn.classList.add('loading');
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Analyse...';
+    box.style.display = 'block';
+    textEl.textContent = 'Analyse IA en cours...';
+
+    try {
+        const bodyText = document.getElementById('view-body').innerText || '';
+        const response = await fetch(`${API_URL}/ai/summarize`, {
+            method: 'POST',
+            headers: { 'Authorization': authToken, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: bodyText })
+        });
+        const data = await response.json();
+        textEl.textContent = data.summary || 'Résumé indisponible.';
+        showToast('✨ Résumé IA généré !', 'success');
+    } catch (err) {
+        textEl.textContent = 'Erreur lors de la connexion au service IA.';
+        showToast('Erreur résumé IA', 'error');
+    } finally {
+        btn.classList.remove('loading');
+        btn.innerHTML = '<i class="fas fa-magic"></i> Résumé IA';
+    }
+}
+
+function replyToCurrentMessage() {
+    if (!selectedMessageId) return;
+    openCompose();
+    const subject = document.getElementById('view-subject').textContent;
+    document.getElementById('send-subject').value = `Re: ${subject}`;
+    document.getElementById('send-to').focus();
 }
 
 async function deleteCurrentMessage() {
     if (!selectedMessageId) return;
-    if (!confirm('Souhaitez-vous supprimer définitivement ce message ?')) return;
+    const lang = translations[currentLang];
+    if (!confirm(lang["txt-delete-confirm"])) return;
 
     try {
         const response = await fetch(`${API_URL}/messages/${selectedMessageId}/delete`, {
@@ -421,71 +786,130 @@ async function deleteCurrentMessage() {
             headers: { 'Authorization': authToken }
         });
         
+        if (response.status === 401) return logout();
+
         if (response.ok) {
-            showToast('Message supprimé', 'info');
+            showToast(currentLang === 'en' ? 'Message deleted' : (currentLang === 'ar' ? 'تم حذف الرسالة' : 'Message supprimé'), 'info');
             showInbox();
         } else {
-            showToast('Impossible de supprimer le message', 'error');
+            showToast(currentLang === 'en' ? 'Could not delete' : (currentLang === 'ar' ? 'تعذر الحذف' : 'Impossible de supprimer le message'), 'error');
         }
     } catch (err) {
-        showToast('Erreur lors de la suppression', 'error');
+        showToast(currentLang === 'en' ? 'Error during deletion' : (currentLang === 'ar' ? 'خطأ أثناء الحذف' : 'Erreur lors de la suppression'), 'error');
     }
 }
 
 async function deleteMessageDirectly(id) {
-    if (!confirm(`Supprimer le message #${id} ?`)) return;
+    const lang = translations[currentLang];
+    if (!confirm(`${lang["txt-delete-confirm"]} (#${id})`)) return;
     try {
         const response = await fetch(`${API_URL}/messages/${id}/delete`, {
             method: 'POST',
             headers: { 'Authorization': authToken }
         });
+        
+        if (response.status === 401) return logout();
+
         if (response.ok) {
-            showToast('Message supprimé', 'info');
+            showToast(lang["msg-deleted"], 'info');
             loadInbox();
+        } else {
+            showToast(lang["msg-delete-fail"], 'error');
         }
     } catch (err) {
-        showToast('Erreur lors de la suppression rapide', 'error');
+        showToast(lang["msg-delete-fail"], 'error');
     }
 }
 
 // --- Compose ---
+let emailQuill;
+document.addEventListener('DOMContentLoaded', () => {
+    emailQuill = new Quill('#quill-editor', {
+        theme: 'snow',
+        placeholder: 'Rédiger votre message...',
+        modules: {
+            toolbar: [
+                ['bold', 'italic', 'underline', 'strike'],
+                ['blockquote', 'code-block'],
+                [{ 'header': 1 }, { 'header': 2 }],
+                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                [{ 'color': [] }, { 'background': [] }],
+                [{ 'align': [] }],
+                ['link', 'image'],
+                ['clean']
+            ]
+        }
+    });
+});
+
 function openCompose() {
     document.getElementById('compose-overlay').style.display = 'flex';
+    if(emailQuill) emailQuill.setContents([]);
 }
 
 function closeCompose() {
     document.getElementById('compose-overlay').style.display = 'none';
 }
 
-document.getElementById('send-form').addEventListener('submit', async (e) => {
+let pendingSendTimeout = null;
+document.getElementById('send-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    const btn = e.target.querySelector('.btn-send');
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'Envoi en cours...';
-
     const payload = {
         to: document.getElementById('send-to').value,
         subject: document.getElementById('send-subject').value,
-        content: document.getElementById('send-content').value
+        content: emailQuill ? emailQuill.root.innerHTML : ""
     };
 
-    try {
-        const response = await fetch(`${API_URL}/send`, {
-            method: 'POST',
-            headers: { 
-                'Authorization': authToken,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
+    closeCompose();
+    const lang = translations[currentLang];
+    const undoMsg = currentLang === 'en' ? 'Sending in 5s...' : (currentLang === 'ar' ? 'جاري الإرسال خلال 5 ثوانٍ...' : 'Envoi dans 5s...');
+    showToast(undoMsg, 'info');
+    
+    const undoBtn = document.createElement('button');
+    undoBtn.id = 'undo-send-btn';
+    undoBtn.innerHTML = `<i class="fas fa-undo"></i> ${currentLang === 'en' ? 'Undo' : (currentLang === 'ar' ? 'تراجع' : 'Annuler')}`;
+    undoBtn.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:9999; background:#d93025; color:white; border:none; padding:12px 24px; border-radius:30px; font-weight:700; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.3);';
+    document.body.appendChild(undoBtn);
+
+    const performSend = async () => {
+        if (undoBtn) undoBtn.remove();
+        try {
+            const response = await fetch(`${API_URL}/send`, {
+                method: 'POST',
+                headers: { 'Authorization': authToken, 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (response.ok) {
+                showToast(lang["msg-send-success"], 'success');
+                document.getElementById('send-form').reset();
+            } else {
+                showToast(lang["msg-send-fail"], 'error');
+            }
+        } catch (err) {
+            showToast('Erreur serveur SMTP', 'error');
+        }
+    };
+
+    pendingSendTimeout = setTimeout(performSend, 5000);
+
+    undoBtn.onclick = () => {
+        clearTimeout(pendingSendTimeout);
+        undoBtn.remove();
+        showToast(currentLang === 'en' ? 'Sending cancelled' : 'Envoi annulé', 'info');
+        openCompose();
+    };
+});
+
+        if (response.status === 401) return logout();
 
         if (response.ok) {
+            const lang = translations[currentLang];
             closeCompose();
             e.target.reset();
-            showToast('Message envoyé !', 'success');
+            showToast(lang["msg-send-success"], 'success');
         } else {
-            showToast('Échec de l\'envoi SMTP', 'error');
+            const lang = translations[currentLang];
+            showToast(lang["msg-send-fail"], 'error');
         }
     } catch (err) {
         showToast('Erreur lors de l\'envoi', 'error');
@@ -504,7 +928,11 @@ async function loadDashboardStats() {
         const response = await fetch(`${API_URL}/stats`, {
             headers: { 'Authorization': authToken }
         });
+        
+        if (response.status === 401) return logout();
+
         const stats = await response.json();
+        const lang = translations[currentLang];
 
         // Update Text Stats
         document.getElementById('stat-total-emails').textContent = stats.totalEmails;
@@ -512,7 +940,7 @@ async function loadDashboardStats() {
         
         const sizeMB = (stats.totalSize / (1024 * 1024)).toFixed(2);
         const limitMB = (stats.storageLimit / (1024 * 1024)).toFixed(0);
-        document.getElementById('storageText').textContent = `${sizeMB} Mo sur ${limitMB} Mo utilisés`;
+        document.getElementById('storageText').textContent = `${sizeMB} Mo ${lang["txt-storage-of"]} ${limitMB} Mo ${lang["txt-storage-used"]}`;
 
         initCharts(stats);
     } catch (err) {
@@ -563,3 +991,26 @@ function initCharts(stats) {
     });
 }
 
+// --- PWA Service Worker Registration ---
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then((registration) => {
+      console.log('ServiceWorker registration successful with scope: ', registration.scope);
+    }, (err) => {
+      console.log('ServiceWorker registration failed: ', err);
+    });
+  });
+}
+ 
+
+function formatEmailDate(dateStr) {
+    try {
+        const d = new Date(dateStr);
+        const now = new Date();
+        if (d.toDateString() === now.toDateString())
+            return d.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'});
+        if (now - d < 7 * 86400000)
+            return d.toLocaleDateString('fr-FR', {weekday: 'short', hour: '2-digit', minute: '2-digit'});
+        return d.toLocaleDateString('fr-FR', {day: '2-digit', month: 'short'});
+    } catch(_) { return dateStr || ''; }
+}

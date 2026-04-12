@@ -34,19 +34,34 @@ public class MailServerLauncher extends JFrame {
         JButton btnPop3 = UIUtils.createStyledButton("Launch POP3 Server", UIUtils.COLOR_PRIMARY);
         JButton btnImap = UIUtils.createStyledButton("Launch IMAP Server", UIUtils.COLOR_PRIMARY);
         
+        JButton btnWeb = UIUtils.createStyledButton("Launch SaaS Portal (Web)", new Color(153, 51, 255));
+        
         btnSmtp.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         btnPop3.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         btnImap.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        btnWeb.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
 
         btnSmtp.addActionListener(e -> new SmtpGui());
         btnPop3.addActionListener(e -> new Pop3Gui());
         btnImap.addActionListener(e -> new ImapGui());
+        btnWeb.addActionListener(e -> {
+            new Thread(() -> {
+                try {
+                    org.example.web.MailRestController.main(new String[]{"8080"});
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }).start();
+            JOptionPane.showMessageDialog(this, "SaaS Portal is running on http://localhost:8080", "Web Server", JOptionPane.INFORMATION_MESSAGE);
+        });
 
         mainPanel.add(btnSmtp);
         mainPanel.add(Box.createRigidArea(new Dimension(0, 8)));
         mainPanel.add(btnPop3);
         mainPanel.add(Box.createRigidArea(new Dimension(0, 8)));
         mainPanel.add(btnImap);
+        mainPanel.add(Box.createRigidArea(new Dimension(0, 8)));
+        mainPanel.add(btnWeb);
         mainPanel.add(Box.createRigidArea(new Dimension(0, 20)));
 
         // Client Section

@@ -321,13 +321,47 @@ class SmtpSession extends Thread {
             }
         }
 
+        // --- Simple Spam Filter ---
+        String lowerData = data.toLowerCase();
+        boolean isSpam = lowerData.contains("casino") || lowerData.contains("free money") || 
+                         lowerData.contains("win") || lowerData.contains("lottery") ||
+                         lowerData.contains("cryptocurrency");
+        
+        if (isSpam && !subject.startsWith("[SPAM]")) {
+            subject = "[SPAM] " + subject;
+        }
+
         for (String recipient : recipients) {
             boolean stored = DatabaseManager.storeEmail(sender, recipient, subject, data);
             if (stored) {
                 logger.log("Stored email for " + recipient + " in Database");
+                // Notify Web nodes for real-time WebSocket push
+                notifyWebNodes(sender, recipient, subject);
             } else {
                 logger.log("Failed to store email for " + recipient + " in Database");
             }
+        }
+    }
+
+    private void notifyWebNodes(String from, String recipient, String subject) {
+        String[] nodes = {"mail-node-1", "mail-node-2", "mail-node-3"};
+        for (String node : nodes) {
+            new Thread(() -> {
+                try {
+                    String urlStr = "http://" + node + ":8080/api/internal/notify?recipient=" + 
+                                     URLEncoder.encode(recipient, "UTF-8") +
+                                     "&from=" + URLEncoder.encode(from, "UTF-8") +
+                                     "&subject=" + URLEncoder.encode(subject, "UTF-8");
+                    URL url = new URL(urlStr);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setConnectTimeout(1000);
+                    conn.getResponseCode();
+                    conn.disconnect();
+                } catch (Exception e) {
+                    // Ignore nodes that might not be up or have different IP
+                }
+            }).start();
         }
     }
 

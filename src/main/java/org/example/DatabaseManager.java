@@ -7,9 +7,10 @@ import java.util.List;
 import java.util.Map;
 
 public class DatabaseManager {
-    private static final String URL = "jdbc:mysql://localhost:3306/email_db";
+    private static final String DB_HOST = System.getenv("DB_HOST") != null ? System.getenv("DB_HOST") : "localhost";
+    private static final String URL = "jdbc:mysql://" + DB_HOST + ":3306/email_db";
     private static final String USER = "root"; // Update if necessary
-    private static final String PASSWORD = ""; // Update if necessary
+    private static final String PASSWORD = System.getenv("DB_PASSWORD") != null ? System.getenv("DB_PASSWORD") : "root";
 
     static {
         try {
@@ -183,5 +184,47 @@ public class DatabaseManager {
             e.printStackTrace();
             return false;
         }
+    }
+
+    // Admin : Get detailed stats for all users
+    public static java.util.List<java.util.Map<String, Object>> getUsersDetailedStats() {
+        java.util.List<java.util.Map<String, Object>> allStats = new java.util.ArrayList<>();
+        String sql = "SELECT u.username, COUNT(e.id) as mail_count, SUM(IFNULL(LENGTH(e.body), 0)) as storage_used " +
+                     "FROM users u " +
+                     "LEFT JOIN emails e ON u.username = e.recipient " +
+                     "GROUP BY u.username " +
+                     "ORDER BY mail_count DESC";
+
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            
+            while (rs.next()) {
+                java.util.Map<String, Object> site = new java.util.HashMap<>();
+                site.put("username", rs.getString("username"));
+                site.put("count", rs.getInt("mail_count"));
+                site.put("size", rs.getLong("storage_used"));
+                allStats.add(site);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return allStats;
+    }
+
+    // Get all usernames for contact list
+    public static java.util.List<String> getAllUsernames() {
+        java.util.List<String> users = new java.util.ArrayList<>();
+        String sql = "SELECT username FROM users ORDER BY username";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             java.sql.ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                users.add(rs.getString("username"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return users;
     }
 }
