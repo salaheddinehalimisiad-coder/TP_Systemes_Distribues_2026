@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # --- Base de données commune ---
+  database:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: gest_messagerie
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # --- Noeuds Applicatifs (Load Balanced) ---
+  mail-node-1:
+    build: .
+    command: ["8080"]
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "8081:8080" # Mappe le 8080 interne au 8081 externe
+
+  mail-node-2:
+    build: .
+    command: ["8080"] # Le port interne reste 8080
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "8082:8080"
+
+  mail-node-3:
+    build: .
+    command: ["8080"]
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "8083:8080"
+
+  # --- Load Balancer (NGINX) ---
+  nginx:
+    image: nginx:latest
+    volumes:
+      - ./nginx-docker.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - mail-node-1
+      - mail-node-2
+      - mail-node-3

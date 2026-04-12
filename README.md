@@ -49,7 +49,7 @@ Le projet a évolué d'une version monolithique locale vers un véritable systè
 1. **Cloner le repository** :
    ```bash
    git clone https://github.com/salaheddinehalimisiad-coder/TP_Systemes_Distribues_2026.git
-   cd TP_Systemes_Distribues_2026/Partie01-02_Implementation_SMTP_POP3/Partie01-02
+   cd TP_Systemes_Distribues_2026
    ```
 
 2. **Compiler le projet** :
