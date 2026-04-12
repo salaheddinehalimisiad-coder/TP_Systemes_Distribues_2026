@@ -67,6 +67,34 @@ Le projet a évolué d'une version monolithique locale vers un véritable systè
 
 ---
 
+## 🛠️ Partie 7 : Client Standard Jakarta Mail (Interoperabilité)
+
+Pour valider l'interopérabilité avec les bibliothèques standards :
+1. **Lancer le client graphique** : Exécuter `org.example.StandardMailClientGui`.
+2. **Fonctionnalités incluses** :
+   - 📤 **SMTP** : Envoi de mails formatés.
+   - 📥 **POP3** : Récupération et suppression sécurisée.
+   - 🔍 **IMAP** : Consultation avancée et recherche par sujet.
+
+---
+
+## ⚖️ Partie 8 : Scalabilité et Load Balancing
+
+Le système supporte désormais une architecture distribuée avec répartition de charge (NGINX) :
+
+### Lancement des nœuds backend
+Vous pouvez lancer plusieurs instances du serveur Web sur des ports différents :
+```bash
+mvn exec:java -Dexec.mainClass="org.example.web.MailRestController" -Dexec.args="8080"
+mvn exec:java -Dexec.mainClass="org.example.web.MailRestController" -Dexec.args="8081"
+mvn exec:java -Dexec.mainClass="org.example.web.MailRestController" -Dexec.args="8082"
+```
+
+### Configuration NGINX
+Un fichier de configuration prêt à l'emploi est disponible dans `src/main/resources/nginx.conf`. Il redirige le trafic vers les trois instances ci-dessus en mode **Round Robin**.
+
+---
+
 ## ⚙️ Intégration Continue (CI/CD)
 
 Ce projet est scanné et compilé automatiquement via **GitHub Actions**.  

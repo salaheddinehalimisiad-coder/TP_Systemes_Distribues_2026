@@ -32,10 +32,11 @@ public class MailRestController {
     public static void main(String[] args) {
         initRmiConnection();
 
+        int port = (args.length > 0) ? Integer.parseInt(args[0]) : 8080;
         Javalin app = Javalin.create(config -> {
             config.addStaticFiles("/web", Location.CLASSPATH); 
             config.enableCorsForAllOrigins();
-        }).start(8080);
+        }).start(port);
 
         // Routes API
         app.post("/api/login", MailRestController::login);
