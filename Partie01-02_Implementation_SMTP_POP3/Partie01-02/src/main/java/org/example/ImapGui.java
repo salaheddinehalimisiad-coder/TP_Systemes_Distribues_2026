@@ -15,44 +15,44 @@ public class ImapGui extends JFrame {
     private final int port = 143;
 
     public ImapGui() {
-        setTitle("IMAP Server Supervision");
-        setSize(700, 500);
+        setTitle("IMAP Server — Supervision");
+        setSize(750, 520);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         UIUtils.applyPremiumTheme(this);
 
         JPanel mainPanel = new JPanel();
         UIUtils.setStandardLayout(mainPanel);
-        
-        // Header Panel
+
         JPanel headerPanel = UIUtils.createCardPanel();
         headerPanel.setLayout(new BorderLayout(10, 10));
-        headerPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        headerPanel.setBorder(BorderFactory.createEmptyBorder(16, 18, 16, 18));
 
-        JLabel title = UIUtils.createHeaderLabel("IMAP ENGINE");
+        JLabel title = UIUtils.createHeaderLabel("IMAP Server");
         headerPanel.add(title, BorderLayout.NORTH);
 
-        JPanel statPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JPanel statPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         statPanel.setOpaque(false);
-        statusLabel = new JLabel("Status: Stopped");
+        statusLabel = new JLabel("\u25CF  Stopped");
         statusLabel.setForeground(UIUtils.COLOR_DANGER);
-        statusLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        
+        statusLabel.setFont(UIUtils.FONT_STATUS);
+
         clientCountLabel = new JLabel("Clients: 0");
         clientCountLabel.setForeground(UIUtils.COLOR_TEXT_DIM);
-        clientCountLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        clientCountLabel.setFont(UIUtils.FONT_BODY);
 
         statPanel.add(statusLabel);
-        statPanel.add(new JLabel("  |  ")).setForeground(UIUtils.COLOR_TEXT_DIM);
+        JLabel sep = new JLabel("  \u2502  ");
+        sep.setForeground(UIUtils.COLOR_BORDER);
+        statPanel.add(sep);
         statPanel.add(clientCountLabel);
         headerPanel.add(statPanel, BorderLayout.CENTER);
 
-        // Buttons
         JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         buttonRow.setOpaque(false);
-        startButton = UIUtils.createStyledButton("START", UIUtils.COLOR_SUCCESS);
-        stopButton = UIUtils.createStyledButton("STOP", UIUtils.COLOR_DANGER);
+        startButton = UIUtils.createStyledButton("Start", UIUtils.COLOR_SUCCESS);
+        stopButton = UIUtils.createStyledButton("Stop", UIUtils.COLOR_DANGER);
         stopButton.setEnabled(false);
-        JButton clearButton = UIUtils.createStyledButton("CLEAR LOGS", Color.GRAY);
+        JButton clearButton = UIUtils.createStyledButton("Clear Logs", UIUtils.COLOR_NEUTRAL_BTN);
 
         buttonRow.add(startButton);
         buttonRow.add(stopButton);
@@ -61,30 +61,18 @@ public class ImapGui extends JFrame {
 
         mainPanel.add(headerPanel, BorderLayout.NORTH);
 
-        // Center Panel: Logs
-        logArea = new JTextArea();
-        logArea.setEditable(false);
-        logArea.setBackground(new Color(25, 28, 31));
-        logArea.setForeground(Color.ORANGE);
-        logArea.setFont(new Font("Consolas", Font.PLAIN, 13));
-        logArea.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        
-        JScrollPane scrollPane = new JScrollPane(logArea);
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(60, 65, 70)));
+        logArea = UIUtils.createLogArea();
+        JScrollPane scrollPane = UIUtils.createLogScrollPane(logArea);
         mainPanel.add(scrollPane, BorderLayout.CENTER);
 
         add(mainPanel);
 
-        // Listeners
         startButton.addActionListener(e -> startServer());
         stopButton.addActionListener(e -> stopServer());
         clearButton.addActionListener(e -> logArea.setText(""));
 
-        // Timer to update client count
         Timer timer = new Timer(1000, e -> {
-            if (server != null) {
-                clientCountLabel.setText("Clients: " + server.getConnectedCount());
-            }
+            if (server != null) clientCountLabel.setText("Clients: " + server.getConnectedCount());
         });
         timer.start();
 
@@ -95,28 +83,28 @@ public class ImapGui extends JFrame {
     private void startServer() {
         server = new ImapServer(port, this::addLog);
         server.start();
-        statusLabel.setText("Status: RUNNING ON " + port);
+        statusLabel.setText("\u25CF  Running on port " + port);
         statusLabel.setForeground(UIUtils.COLOR_SUCCESS);
         startButton.setEnabled(false);
         stopButton.setEnabled(true);
-        addLog("SYSTEM: IMAP Engine engaged. Port 143 listening...");
+        addLog("IMAP server started — listening on port " + port);
     }
 
     private void stopServer() {
         if (server != null) {
             server.stop();
-            statusLabel.setText("Status: STOPPED");
+            statusLabel.setText("\u25CF  Stopped");
             statusLabel.setForeground(UIUtils.COLOR_DANGER);
             startButton.setEnabled(true);
             stopButton.setEnabled(false);
-            addLog("SYSTEM: IMAP Engine terminated by administrator.");
+            addLog("IMAP server stopped by administrator.");
         }
     }
 
     private void addLog(String message) {
-        String timestamp = new SimpleDateFormat("HH:mm:ss").format(new Date());
+        String ts = new SimpleDateFormat("HH:mm:ss").format(new Date());
         SwingUtilities.invokeLater(() -> {
-            logArea.append("[" + timestamp + "] " + message + "\n");
+            logArea.append("[" + ts + "]  " + message + "\n");
             logArea.setCaretPosition(logArea.getDocument().getLength());
         });
     }

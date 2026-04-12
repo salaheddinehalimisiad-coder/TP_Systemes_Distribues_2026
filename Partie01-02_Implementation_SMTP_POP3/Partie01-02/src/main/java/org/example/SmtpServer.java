@@ -253,19 +253,6 @@ class SmtpSession extends Thread {
             return;
         }
 
-        // Check if the recipient's directory exists.
-        // The user directory is assumed to be "mailserver/username" where username is
-        // the part before '@'.
-        String username = email.split("@")[0];
-        File userDir = new File(System.getProperty("user.dir") + "/mailserver/" + username);
-        if (!userDir.exists()) {
-            boolean created = userDir.mkdirs(); // Create user directory
-            if (!created) {
-                send("550 Failed to create user directory");
-                return;
-            }
-        }
-
         recipients.add(email);
         state = SmtpState.RCPT_TO_SET;
         send("250 OK");
@@ -319,38 +306,22 @@ class SmtpSession extends Thread {
     // Files are named using the current timestamp.
 
     private void storeEmail(String data) {
-        // Use a readable timestamp format (YYYYMMDD_HHMMSS)
-        String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String subject = "No Subject";
+        // Parse subject from data if possible
+        if (data.contains("Subject: ")) {
+            int start = data.indexOf("Subject: ") + 9;
+            int end = data.indexOf("\r\n", start);
+            if (end != -1) {
+                subject = data.substring(start, end);
+            }
+        }
 
         for (String recipient : recipients) {
-            // Extract username (before @)
-            String username = recipient.split("@")[0];
-
-            // Define user directory path
-            File userDir = new File("mailserver/" + username);
-
-            // Ensure the directory exists
-            if (!userDir.exists()) {
-                userDir.mkdirs(); // Create if missing
-            }
-
-            // Define email file path
-            File emailFile = new File(userDir, timestamp + ".txt");
-
-            // Write email content
-            try (PrintWriter writer = new PrintWriter(new FileWriter(emailFile))) {
-                // Basic email headers (RFC 5322)
-                writer.println("From: " + sender);
-                writer.println("To: " + String.join(", ", recipients));
-                writer.println("Date: " + new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z").format(new Date()));
-                writer.println("Subject: Test Email");
-                writer.println();
-                writer.print(data);
-
-                // Log success
-                logger.log("Stored email for " + recipient + " in " + emailFile.getName());
-            } catch (IOException e) {
-                System.err.println(" Error storing email: " + e.getMessage());
+            boolean stored = DatabaseManager.storeEmail(sender, recipient, subject, data);
+            if (stored) {
+                logger.log("Stored email for " + recipient + " in Database");
+            } else {
+                logger.log("Failed to store email for " + recipient + " in Database");
             }
         }
     }

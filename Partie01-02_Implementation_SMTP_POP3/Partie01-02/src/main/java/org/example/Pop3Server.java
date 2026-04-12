@@ -70,13 +70,12 @@ class Pop3Session extends Thread {
     private Socket socket;
     private BufferedReader in;
     private PrintWriter out;
-    private String username;
-    private File userDir;
-    private List<File> emails;
+    private List<Map<String, Object>> emails;
     private boolean authenticated;
     private List<Boolean> deletionFlags;
     private ServerLogger logger;
     private Pop3Server server;
+    private String username;
 
     public Pop3Session(Socket socket, ServerLogger logger, Pop3Server server) {
         this.socket = socket;
@@ -98,33 +97,13 @@ class Pop3Session extends Thread {
             send("+OK POP3 server ready");
 
             String line;
-            // 1. Lit chaque ligne envoyée par le client (via le flux 'in') tant que la
-            // connexion est ouverte.
             while ((line = in.readLine()) != null) {
-
-                // 2. Affiche dans la console du serveur ce qui a été reçu (utile pour le
-                // débogage).
                 logger.log("POP3 Received: " + line);
-
-                // 3. Découpe la ligne reçue en deux parties maximum, en utilisant l'espace
-                // comme séparateur.
-                // Le "2" signifie qu'on s'arrête au premier espace rencontré :
-                // tout ce qui suit le premier espace est considéré comme un seul argument.
                 String[] parts = line.split(" ", 2);
-
-                // 4. La première partie (index 0) correspond au nom de la commande (ex: "USER",
-                // "RETR").
-                // Elle est convertie en MAJUSCULES pour faciliter la comparaison dans le
-                // 'switch'.
                 String command = parts[0].toUpperCase();
-
-                // 5. La deuxième partie (index 1) correspond à l'argument de la commande (ex:
-                // le nom d'utilisateur).
-                // Si la commande n'a pas d'argument (ex: "STAT"), on utilise une chaîne vide
-                // "".
                 String argument = parts.length > 1 ? parts[1] : "";
 
-                switch (command.toUpperCase()) {
+                switch (command) {
                     case "USER":
                         handleUser(argument);
                         break;
@@ -154,17 +133,11 @@ class Pop3Session extends Thread {
                         break;
                     case "QUIT":
                         handleQuit();
-                        return; // Terminer la session
+                        return;
                     default:
                         send("-ERR Unknown command");
                         break;
                 }
-
-            }
-            // Si la boucle se termine, cela signifie que la connexion a été interrompue
-            // sans QUIT.
-            if (authenticated) {
-                logger.log("POP3 Info: Connection interrupted without QUIT for " + username);
             }
         } catch (IOException e) {
             logger.log("POP3 Session error: " + e.getMessage());
@@ -172,16 +145,13 @@ class Pop3Session extends Thread {
             try {
                 server.removeSession(this);
                 socket.close();
-            } catch (IOException e) {
-                /* Ignore */ }
+            } catch (IOException e) {}
         }
     }
 
     private void handleUser(String arg) {
-        File dir = new File("mailserver/" + arg);
-        if (dir.exists() && dir.isDirectory()) {
+        if (DatabaseManager.userExists(arg)) {
             username = arg;
-            userDir = dir;
             out.println("+OK User accepted");
         } else {
             out.println("-ERR User not found");
@@ -194,7 +164,6 @@ class Pop3Session extends Thread {
             return;
         }
         
-        // --- DEBUT RMI CHECK ---
         try {
             java.rmi.registry.Registry registry = java.rmi.registry.LocateRegistry.getRegistry("127.0.0.1", 1099);
             org.example.auth.IAuthService authService = (org.example.auth.IAuthService) registry.lookup("AuthService");
@@ -208,22 +177,9 @@ class Pop3Session extends Thread {
             out.println("-ERR Authorization server unavailable");
             return;
         }
-        // --- FIN RMI CHECK ---
 
         authenticated = true;
-        // Créer le dossier s'il n'existe pas encore (nouvel utilisateur RMI sans email)
-        if (!userDir.exists()) {
-            userDir.mkdirs();
-        }
-        
-        // Chargez les fichiers du répertoire dans une ArrayList mutable
-        File[] files = userDir.listFiles();
-        if (files == null) {
-            emails = new ArrayList<>();
-        } else {
-            emails = new ArrayList<>(java.util.Arrays.asList(files));
-        }
-        // Initialisez les flags de suppression : aucun email n'est marqué (false)
+        emails = DatabaseManager.fetchEmails(username);
         deletionFlags = new ArrayList<>();
         for (int i = 0; i < emails.size(); i++) {
             deletionFlags.add(false);
@@ -236,7 +192,10 @@ class Pop3Session extends Thread {
             out.println("-ERR Authentication required");
             return;
         }
-        long size = emails.stream().mapToLong(File::length).sum();
+        long size = 0;
+        for (Map<String, Object> email : emails) {
+            size += ((String)email.get("content")).length();
+        }
         out.println("+OK " + emails.size() + " " + size);
     }
 
@@ -247,7 +206,7 @@ class Pop3Session extends Thread {
         }
         out.println("+OK " + emails.size() + " messages");
         for (int i = 0; i < emails.size(); i++) {
-            out.println((i + 1) + " " + emails.get(i).length());
+            out.println((i + 1) + " " + ((String)emails.get(i).get("content")).length());
         }
         out.println(".");
     }
@@ -263,15 +222,11 @@ class Pop3Session extends Thread {
                 out.println("-ERR No such message");
                 return;
             }
-            File emailFile = emails.get(index);
-            out.println("+OK " + emailFile.length() + " octets");
-            BufferedReader reader = new BufferedReader(new FileReader(emailFile));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                out.println(line);
-            }
+            Map<String, Object> email = emails.get(index);
+            String content = (String) email.get("content");
+            out.println("+OK " + content.length() + " octets");
+            out.println(content);
             out.println(".");
-            reader.close();
         } catch (Exception e) {
             out.println("-ERR Invalid message number");
         }
@@ -283,22 +238,17 @@ class Pop3Session extends Thread {
             return;
         }
         try {
-            arg = arg.trim();
-            int index = Integer.parseInt(arg) - 1; // Les messages sont numérotés à partir de 1
+            int index = Integer.parseInt(arg.trim()) - 1;
             if (index < 0 || index >= emails.size()) {
                 out.println("-ERR No such message");
                 return;
             }
-            // Vérifier si le message est déjà marqué pour suppression
             if (deletionFlags.get(index)) {
                 out.println("-ERR Message already marked for deletion");
                 return;
             }
-            // Marquer le message pour suppression (ne pas le supprimer tout de suite)
             deletionFlags.set(index, true);
             out.println("+OK Message marked for deletion");
-        } catch (NumberFormatException nfe) {
-            out.println("-ERR Invalid message number");
         } catch (Exception e) {
             out.println("-ERR Invalid message number");
         }
@@ -309,7 +259,6 @@ class Pop3Session extends Thread {
             out.println("-ERR Authentication required");
             return;
         }
-        // Remise à zéro de tous les flags de suppression
         for (int i = 0; i < deletionFlags.size(); i++) {
             deletionFlags.set(i, false);
         }
@@ -317,17 +266,14 @@ class Pop3Session extends Thread {
     }
 
     private void handleQuit() {
-        // Pour chaque email marqué pour suppression, supprimez le fichier
         if (authenticated) {
             for (int i = deletionFlags.size() - 1; i >= 0; i--) {
                 if (deletionFlags.get(i)) {
-                    File emailFile = emails.get(i);
-                    if (emailFile.delete()) {
-                        logger.log("POP3: Deleted email " + emailFile.getName());
+                    int emailId = (int) emails.get(i).get("id");
+                    if (DatabaseManager.deleteEmail(emailId)) {
+                        logger.log("POP3: Deleted email ID " + emailId + " from DB");
                         emails.remove(i);
                         deletionFlags.remove(i);
-                    } else {
-                        System.err.println("Failed to delete email: " + emailFile.getAbsolutePath());
                     }
                 }
             }

@@ -97,11 +97,7 @@ class ImapSession extends Thread {
 
     private ImapState state = ImapState.NOT_AUTHENTICATED;
     private String username;
-    private File currentFolder;
-    private List<MessageMetadata> messages = new ArrayList<>();
-
-    // Repertoire racine de stockage des mails (même que SMTP/POP3)
-    private static final String MAIL_ROOT = "mailserver";
+    private List<Map<String, Object>> emails = new ArrayList<>();
 
     private ServerLogger logger;
     private ImapServer server;
@@ -119,11 +115,9 @@ class ImapSession extends Thread {
     @Override
     public void run() {
         try {
-            // RFC exige ASCII sur le flux réseau — évite les artefacts Telnet Windows
             in  = new BufferedReader(new InputStreamReader(socket.getInputStream(), "US-ASCII"));
             out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "US-ASCII")), true);
 
-            // Greeting obligatoire (RFC 9051 §3)
             send("* OK [CAPABILITY IMAP4rev2 AUTH=PLAIN] IMAP Server Ready");
 
             String line;
@@ -138,25 +132,18 @@ class ImapSession extends Thread {
             try {
                 server.removeSession(this);
                 socket.close();
-            } catch (IOException e) {
-                /* ignore */ }
+            } catch (IOException e) {}
         }
     }
 
-    /** Envoie une ligne au client avec terminaison CRLF (RFC 9051). */
     private void send(String response) {
         logger.log("SERVER -> " + response);
         out.print(response + "\r\n");
         out.flush();
     }
 
-    // ================================================================
-    //  Routeur de commandes : extrait tag + commande + arguments
-    // ================================================================
     private void handleCommand(String line) {
         if (line.isEmpty()) return;
-
-        // Format IMAP :  <tag> <COMMANDE> [arguments]
         String[] parts = line.split(" ", 3);
         if (parts.length < 2) {
             send("* BAD Format invalide : ligne vide ou tag manquant");
@@ -194,16 +181,11 @@ class ImapSession extends Thread {
                 handleLogout(tag);
                 break;
             default:
-                // Scenario 6 : commande inconnue ou refusee dans cet etat
-                send(tag + " BAD Commande inconnue ou non autorisee dans l'etat actuel ["
-                        + state.name() + "]");
+                send(tag + " BAD Commande inconnue ou non autorisee dans l'etat actuel [" + state.name() + "]");
                 break;
         }
     }
 
-    // ================================================================
-    //  Scenario 1 & 6 — LOGIN (seulement en etat NOT_AUTHENTICATED)
-    // ================================================================
     private void handleLogin(String tag, String args) {
         if (state != ImapState.NOT_AUTHENTICATED) {
             send(tag + " NO Already authenticated");
@@ -218,7 +200,6 @@ class ImapSession extends Thread {
         String user = creds[0].replace("\"", "");
         String pass = creds[1].replace("\"", "");
         
-        // --- DEBUT RMI CHECK ---
         try {
             java.rmi.registry.Registry registry = java.rmi.registry.LocateRegistry.getRegistry("127.0.0.1", 1099);
             org.example.auth.IAuthService authService = (org.example.auth.IAuthService) registry.lookup("AuthService");
@@ -232,21 +213,12 @@ class ImapSession extends Thread {
             send(tag + " NO [SERVERBUG] Authorization server unavailable");
             return;
         }
-        // --- FIN RMI CHECK ---
-
-        File dir = new File(MAIL_ROOT + "/" + user);
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
 
         this.username = user;
         this.state    = ImapState.AUTHENTICATED;
         send(tag + " OK LOGIN successful - welcome " + user);
     }
 
-    // ================================================================
-    //  Scenario 1 & 2 — SELECT
-    // ================================================================
     private void handleSelect(String tag, String folderName) {
         if (state == ImapState.NOT_AUTHENTICATED) {
             send(tag + " NO Authentication required before SELECT");
@@ -254,45 +226,28 @@ class ImapSession extends Thread {
         }
 
         folderName = folderName.replace("\"", "").trim();
-
-        // Scenario 2 : boîte inexistante
         if (!folderName.equalsIgnoreCase("INBOX")) {
             send(tag + " NO [NONEXISTENT] Mailbox not found: " + folderName);
             return;
         }
 
-        currentFolder = new File(MAIL_ROOT + "/" + username);
         refreshMessageList();
         state = ImapState.SELECTED;
 
-        send("* " + messages.size() + " EXISTS");
+        send("* " + emails.size() + " EXISTS");
         send("* 0 RECENT");
-        send("* OK [UNSEEN 1] First unseen message");
         send("* OK [UIDVALIDITY 1] UIDs valid");
         send("* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)");
         send(tag + " OK [READ-WRITE] SELECT completed");
     }
 
-    /** Recharge la liste des messages depuis le dossier utilisateur. */
     private void refreshMessageList() {
-        messages.clear();
-        File[] files = currentFolder.listFiles((dir, name) -> name.endsWith(".txt"));
-        if (files != null) {
-            Arrays.sort(files, Comparator.comparingLong(File::lastModified));
-            for (int i = 0; i < files.length; i++) {
-                // Charge les flags persistes (ou cree une fiche vierge)
-                messages.add(MessageMetadata.load(i + 1, files[i]));
-            }
-        }
+        emails = DatabaseManager.fetchEmails(username);
     }
 
-    // ================================================================
-    //  Scenarios 1 & 3 — FETCH (complet ou en-têtes seuls)
-    // ================================================================
     private void handleFetch(String tag, String args) {
         if (state != ImapState.SELECTED) {
-            send(tag + " NO Select a mailbox first [current state: "
-                    + state.name() + "]");
+            send(tag + " NO Select a mailbox first");
             return;
         }
 
@@ -301,213 +256,127 @@ class ImapSession extends Thread {
             int id = Integer.parseInt(parts[0]);
             String dataItem = (parts.length > 1) ? parts[1].toUpperCase() : "BODY[]";
 
-            if (id < 1 || id > messages.size()) {
+            if (id < 1 || id > emails.size()) {
                 send(tag + " NO Message " + id + " not found");
                 return;
             }
 
-            MessageMetadata meta = messages.get(id - 1);
-            File emailFile        = meta.getFile();
+            Map<String, Object> email = emails.get(id - 1);
+            String content = (String) email.get("content");
+            boolean isRead = (boolean) email.get("is_read");
+            String flags = isRead ? "\\Seen" : "";
 
             if (dataItem.contains("BODY[HEADER]") || dataItem.contains("RFC822.HEADER")) {
-                // ---- Scenario 3 : lecture partielle (en-têtes uniquement) ----
-                send("* " + id + " FETCH (BODY[HEADER] {?})");
-                StringBuilder headers = new StringBuilder();
-                try (BufferedReader reader = new BufferedReader(new FileReader(emailFile))) {
-                    String line;
-                    while ((line = reader.readLine()) != null && !line.isEmpty()) {
-                        headers.append(line).append("\r\n");
-                    }
-                }
-                // On envoie le literal : {taille}\r\n <donnees>
-                send("* " + id + " FETCH (FLAGS (" + meta.getFlagsAsString()
-                        + ") BODY[HEADER] {" + headers.length() + "}");
-                for (String hl : headers.toString().split("\r\n")) {
-                    send(hl);
-                }
-                send(")\r\n" + tag + " OK FETCH HEADER completed");
-
-            } else {
-                // ---- Scenario 1 : corps complet ----
-                send("* " + id + " FETCH (FLAGS (" + meta.getFlagsAsString()
-                        + ") BODY[] {" + emailFile.length() + "}");
-                try (BufferedReader reader = new BufferedReader(new FileReader(emailFile))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) send(line);
-                }
+                String headers = extractHeaders(content);
+                send("* " + id + " FETCH (FLAGS (" + flags + ") BODY[HEADER] {" + headers.length() + "}");
+                send(headers);
                 send(")");
-                send(tag + " OK FETCH completed");
+            } else {
+                send("* " + id + " FETCH (FLAGS (" + flags + ") BODY[] {" + content.length() + "}");
+                send(content);
+                send(")");
             }
+            send(tag + " OK FETCH completed");
 
-        } catch (NumberFormatException e) {
-            send(tag + " BAD Invalid message number");
-        } catch (IOException e) {
-            send(tag + " NO Error reading message: " + e.getMessage());
+        } catch (Exception e) {
+            send(tag + " BAD Invalid fetch arguments or server error");
         }
     }
 
-    // ================================================================
-    //  Scenario 4 — STORE (gestion des flags, persistance)
-    // ================================================================
+    private String extractHeaders(String content) {
+        int index = content.indexOf("\r\n\r\n");
+        if (index == -1) index = content.indexOf("\n\n");
+        if (index == -1) return content;
+        return content.substring(0, index + 2);
+    }
+
     private void handleStore(String tag, String args) {
         if (state != ImapState.SELECTED) {
-            send(tag + " NO Not allowed without SELECT [state: " + state.name() + "]");
+            send(tag + " NO Not allowed without SELECT");
             return;
         }
 
         try {
-            // Format attendu : STORE <id> +FLAGS (\Seen)
             String[] parts = args.split(" ", 3);
             int id = Integer.parseInt(parts[0]);
-
-            if (id < 1 || id > messages.size()) {
+            if (id < 1 || id > emails.size()) {
                 send(tag + " NO Message introuvable");
                 return;
             }
 
-            MessageMetadata meta = messages.get(id - 1);
-
             if (parts.length >= 3) {
                 String flagSpec = parts[1].toUpperCase();
-                String flagStr  = parts[2].replaceAll("[()\\[\\]]", "").trim();
+                String flagStr  = parts[2].toUpperCase();
 
-                if (flagSpec.equals("+FLAGS") || flagSpec.equals("+FLAGS.SILENT")) {
-                    meta.addFlag(flagStr);
-                } else if (flagSpec.equals("-FLAGS") || flagSpec.equals("-FLAGS.SILENT")) {
-                    meta.removeFlag(flagStr);
+                if (flagStr.contains("\\SEEN")) {
+                    int emailId = (int) emails.get(id - 1).get("id");
+                    if (flagSpec.contains("+FLAGS")) {
+                        // Mark as read in DB
+                        markAsRead(emailId, true);
+                        emails.get(id - 1).put("is_read", true);
+                    } else if (flagSpec.contains("-FLAGS")) {
+                        // Mark as unread in DB
+                        markAsRead(emailId, false);
+                        emails.get(id - 1).put("is_read", false);
+                    }
                 }
-                // Persistance : sauvegarde les flags dans un fichier .flags
-                meta.saveFlags();
             }
-
-            send("* " + id + " FETCH (FLAGS (" + meta.getFlagsAsString() + "))");
+            boolean isRead = (boolean) emails.get(id - 1).get("is_read");
+            send("* " + id + " FETCH (FLAGS (" + (isRead ? "\\Seen" : "") + "))");
             send(tag + " OK STORE completed");
-
-        } catch (NumberFormatException e) {
-            send(tag + " BAD Missing credentials (usage: LOGIN user password)");
+        } catch (Exception e) {
+            send(tag + " BAD Invalid STORE arguments");
         }
     }
 
-    // ================================================================
-    //  Scenario 5 — SEARCH (ALL, FROM:<val>, SUBJECT:<val>)
-    // ================================================================
+    private void markAsRead(int emailId, boolean isRead) {
+        String sql = "UPDATE emails SET is_read = ? WHERE id = ?";
+        try (java.sql.Connection conn = DatabaseManager.getConnection();
+             java.sql.PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setBoolean(1, isRead);
+            stmt.setInt(2, emailId);
+            stmt.executeUpdate();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private void handleSearch(String tag, String args) {
         if (state != ImapState.SELECTED) {
-            send(tag + " NO Non autorise sans SELECT [" + state.name() + "]");
+            send(tag + " NO Non autorise sans SELECT");
             return;
         }
 
         String criterion = args.trim().toUpperCase();
         StringBuilder result = new StringBuilder("* SEARCH");
 
-        for (MessageMetadata meta : messages) {
+        for (int i = 0; i < emails.size(); i++) {
+            Map<String, Object> email = emails.get(i);
             boolean match = false;
 
-            if (criterion.equals("ALL") || criterion.equals("UNSEEN")) {
+            if (criterion.equals("ALL")) {
                 match = true;
-            } else if (criterion.startsWith("FROM:")) {
-                String val = args.substring(5).trim().toLowerCase();
-                match = searchInHeader(meta.getFile(), "From:", val);
-            } else if (criterion.startsWith("SUBJECT:")) {
-                String val = args.substring(8).trim().toLowerCase();
-                match = searchInHeader(meta.getFile(), "Subject:", val);
-            } else {
-                // Critère non supporte → on cherche dans tout le fichier
-                match = searchInBody(meta.getFile(), args.trim().toLowerCase());
+            } else if (criterion.equals("UNSEEN")) {
+                match = !(boolean) email.get("is_read");
+            } else if (criterion.startsWith("FROM")) {
+                String val = args.substring(args.indexOf(" ") + 1).replace("\"", "").toLowerCase();
+                match = ((String)email.get("sender")).toLowerCase().contains(val);
+            } else if (criterion.startsWith("SUBJECT")) {
+                String val = args.substring(args.indexOf(" ") + 1).replace("\"", "").toLowerCase();
+                match = ((String)email.get("subject")).toLowerCase().contains(val);
             }
 
-            if (match) result.append(" ").append(meta.getId());
+            if (match) result.append(" ").append(i + 1);
         }
 
         send(result.toString());
         send(tag + " OK SEARCH completed");
     }
 
-    /** Recherche une valeur dans une en-tête specifique du fichier email. */
-    private boolean searchInHeader(File f, String headerName, String value) {
-        try (BufferedReader r = new BufferedReader(new FileReader(f))) {
-            String line;
-            while ((line = r.readLine()) != null && !line.isEmpty()) {
-                if (line.toLowerCase().startsWith(headerName.toLowerCase())
-                        && line.toLowerCase().contains(value)) {
-                    return true;
-                }
-            }
-        } catch (IOException ignored) {}
-        return false;
-    }
-
-    /** Recherche dans le corps complet du message. */
-    private boolean searchInBody(File f, String value) {
-        try (BufferedReader r = new BufferedReader(new FileReader(f))) {
-            String line;
-            while ((line = r.readLine()) != null) {
-                if (line.toLowerCase().contains(value)) return true;
-            }
-        } catch (IOException ignored) {}
-        return false;
-    }
-
-    // ================================================================
-    //  LOGOUT — valide dans tous les etats
-    // ================================================================
     private void handleLogout(String tag) {
         send("* BYE IMAP Server logging out");
         send(tag + " OK LOGOUT terminated");
         this.state = ImapState.LOGOUT;
     }
-
-    // ================================================================
-    //  Classe interne : Metadonnees + Flags d'un message
-    // ================================================================
-    private static class MessageMetadata {
-        private final int      id;
-        private final File     file;
-        private final Set<String> flags = new LinkedHashSet<>();
-
-        private MessageMetadata(int id, File file) {
-            this.id   = id;
-            this.file = file;
-        }
-
-        /**
-         * Charge les flags depuis le fichier .flags associe au message.
-         * Si ce fichier n'existe pas, on initialise avec \Recent.
-         */
-        public static MessageMetadata load(int id, File emailFile) {
-            MessageMetadata m = new MessageMetadata(id, emailFile);
-            File flagFile = flagFile(emailFile);
-            if (flagFile.exists()) {
-                try (BufferedReader r = new BufferedReader(new FileReader(flagFile))) {
-                    String line;
-                    while ((line = r.readLine()) != null) {
-                        if (!line.trim().isEmpty()) m.flags.add(line.trim());
-                    }
-                } catch (IOException ignored) {}
-            } else {
-                m.flags.add("\\Recent");
-            }
-            return m;
-        }
-
-        /** Persiste les flags sur le disque (fichier .flags à côte du .txt). */
-        public void saveFlags() {
-            try (PrintWriter w = new PrintWriter(new FileWriter(flagFile(file)))) {
-                for (String flag : flags) w.println(flag);
-            } catch (IOException e) {
-                System.err.println("[IMAP] Impossible de sauvegarder les flags : " + e.getMessage());
-            }
-        }
-
-        private static File flagFile(File emailFile) {
-            String name = emailFile.getName().replace(".txt", ".flags");
-            return new File(emailFile.getParent(), name);
-        }
-
-        public int    getId()           { return id; }
-        public File   getFile()         { return file; }
-        public void   addFlag(String f) { flags.add(f); }
-        public void   removeFlag(String f) { flags.remove(f); }
-        public String getFlagsAsString(){ return String.join(" ", flags); }
-    }
 }
+
