@@ -1,78 +1,80 @@
-# 📧 Système de Messagerie Distribuée Pro (SMTP / POP3 / RMI / Web)
+# 📧 EMP Mail - Système de Messagerie Distribué Moderne
 
-![Java](https://img.shields.io/badge/Java-17+-ED8B00?style=for-the-badge&logo=java&logoColor=white)
-![Maven](https://img.shields.io/badge/Maven-Build-C71A36?style=for-the-badge&logo=apachemaven&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Containers-2496ED?style=for-the-badge&logo=docker&logoColor=white)
-![SystemeDistribues](https://img.shields.io/badge/Systems-Distributed-007396?style=for-the-badge&logo=servers&logoColor=white)
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Build](https://img.shields.io/badge/build-docker--compose-orange)
 
-Bienvenue sur le dépôt du projet de **Systèmes Distribués (2025/2026)**. Ce projet est un système de messagerie complet, hautement disponible et distribué, doté d'une interface SaaS moderne et de fonctionnalités d'entreprise.
-
----
-
-## 💎 EMP Mail : SaaS "Production-Ready"
-
-Nous avons transformé ce TP technique en une application SaaS robuste avec des fonctionnalités professionnelles :
-
-- **⚡ Notifications Temps Réel (WebSockets)** : Réception instantanée d'emails sans rafraîchissement. Alerte sonore et visuelle dès l'arrivée d'un message.
-- **📁 Boîte de réception Intelligente** : Tri automatique des emails en catégories (**Principale**, **Réseaux sociaux**, **Promotions**) pour une meilleure organisation.
-- **🛡️ Panneau d'Administration Avancé** :
-    - **Gestion des Utilisateurs** : Statistiques globales de messages et utilisation du stockage par compte.
-    - **Cluster Monitor** : Surveillance en temps réel de l'état de santé (Health Check) et de la latence de chaque nœud du cluster (`mail-node-1`, `2`, `3`).
-- **🛡️ Sécurité & Filtrage** :
-    - **Anti-Spam Intelligent** : Moteur de filtrage par mots-clés au niveau du serveur SMTP.
-    - **Authentification RMI** : Service centralisé de validation de tokens pour une sécurité renforcée.
-- **✨ UX Exceptionnelle** :
-    - **"Undo Send" (Annuler l'envoi)** : Délai de grâce de 5 secondes pour annuler une erreur d'envoi.
-    - **Résumé par IA** : Synthèse automatique du contenu des longs emails via un moteur d'analyse sémantique.
-    - **Contacts Pro** : Carnet d'adresses synchronisé avec initiales dynamiques.
-- **📱 PWA (Progressive Web App)** : Installable sur mobile et bureau pour un accès hors-ligne et natif.
+**EMP Mail** est une plateforme de communication sécurisée et moderne développée pour l'**Ecole Militaire Polytechnique**. Ce système repose sur une architecture distribuée robuste alliant Java RMI pour la communication inter-noeuds et une interface web ultra-moderne.
 
 ---
 
-## 🏗️ Architecture Distribuée (Cluster & Docker)
+## ✨ Fonctionnalités Clés
 
-Le système est conçu pour la haute disponibilité via une architecture en micro-services conteneurisée :
+### 👤 Interface Utilisateur (UX/UI)
+- **Design Premium** : Look "Sleek & Professional" avec des effets de glassmorphism et des animations fluides (Animate.css).
+- **Mode Sombre** : Basculement dynamique entre les thèmes clair et sombre.
+- **Diaporama Immersif** : Page d'accueil avec défilement fluide d'images architecturales de l'EMP.
+- **Recherche Globale** : Filtrage en temps réel des messages par sujet, expéditeur ou contenu.
 
-1.  **Load Balancer (NGINX)** : Répartition de charge intelligente entre les multiples nœuds de l'application.
-2.  **App Nodes (3 Nœuds)** : Trois instances répliquées du serveur Web pour garantir la résilience.
-3.  **Base de Données (MySQL)** : Persistance centralisée pour les emails et les utilisateurs.
-4.  **Messaging Infrastructure** :
-    -   📤 **SMTP** (2525) : Serveur d'expédition avec notifications WebSocket transversales.
-    -   📥 **POP3** (110) : Serveur de récupération compatible avec les clients standards.
-5.  **Service RMI** (1099) : Cluster d'authentification centralisé.
+### 🌐 Internationalisation (i18n)
+- **Support Multi-langue** : Support complet du **Français**, **Anglais** et **Arabe**.
+- **Gestion RTL** : Inversion complète de l'interface pour la langue arabe (Right-to-Left).
 
----
+### 🛠 Fonctions Avancées
+- **Dossier Envoyés** : Suivi complet des messages expédiés.
+- **Notifications Temps Réel** : Alertes sonores et visuelles instantanées via **WebSockets**.
+- **Analyse IA** : Module de résumé automatique des emails par intelligence artificielle.
+- **Gestionnaire de Tâches** : Possibilité de transformer un email en tâche à faire directement dans le panneau latéral.
 
-## 🚀 Démarrage Ultra-Rapide (Docker)
-
-La méthode la plus simple pour lancer l'infrastructure complète est d'utiliser Docker Compose :
-
-```bash
-# Compiler le code Java localement
-mvn clean package
-
-# Lancer tout le cluster (DB, Web Nodes, Nginx)
-docker-compose up -d --build
-```
-*L'interface est alors accessible sur [http://localhost](http://localhost).*
+### 🛡 Administration
+- **Dashboard Admin** : Vue d'ensemble de l'utilisation du stockage et du nombre de messages par utilisateur.
+- **Diffusion Globale (Broadcast)** : Envoi instantané de messages système à tous les utilisateurs de la plateforme.
 
 ---
 
-## 🛠️ Développement Local & Hot-Reload
+## 🏗 Architecture Technique
 
-Pour accélérer le développement, le projet supporte le **Hot-Reloading** des assets Web (HTML/JS/CSS) via un montage de volume Docker automatique. Toute modification dans `src/main/resources/web` est répercutée instantanément.
+Le système est conçu pour être scalable et distribué :
+- **Backend** : Java (Javalin Framework) pour les API REST et WebSockets.
+- **Communication** : Java RMI pour la synchronisation entre les différents noeuds de messagerie.
+- **Base de données** : PostgreSQL / SQLite pour la persistance des données.
+- **Frontend** : JavaScript Vanilla (ES6+), HTML5, CSS3, Chart.js pour les graphiques.
+- **Conteneurisation** : Docker et Docker-Compose pour un déploiement simplifié en cluster.
 
-### Comptes de Test (Pré-configurés) :
+---
+
+## 🚀 Installation & Lancement
+
+### Prérequis
+- Docker & Docker Compose
+- Java 17+ (pour le développement local)
+
+### Déploiement avec Docker
+1. Clonez le dépôt :
+   ```bash
+   git clone https://github.com/salaheddinehalimisiad-coder/TP_Systemes_Distribues_2026.git
+   cd TP_Systemes_Distribues_2026
+   ```
+
+2. Lancez le cluster :
+   ```bash
+   docker-compose up -d --build
+   ```
+
+3. Accédez à l'application :
+   - Interface Utilisateur : `http://localhost`
+   - Interface Administration : `http://localhost/admin.html`
+
+---
+
+## 👤 Identifiants de Test
 - **Utilisateur Standard** : `salah` / `salah123`
-- **Administrateur** : `admin` / `admin123` (Donne accès à l'onglet "Administration")
+- **Administrateur** : `admin` / `admin123`
 
 ---
 
-## ⚙️ Détails Techniques RFC
-- **SMTP** : Implémentation du "Dot-stuffing" et des codes de statut RFC 5321.
-- **POP3** : Support des commandes `USER`, `PASS`, `STAT`, `LIST`, `RETR`, `DELE`, `QUIT`.
-- **RMI** : Interface `IAuthService` pour le découplage authentification/logique métier.
+## 👨‍💻 Développé par
+**Halimisiad Salaheddine** - *TP Systèmes Distribués 2026*
 
 ---
-*Projet réalisé par Halimi Mohamed Salah Eddine - SIAD (2025/2026)*  
-*Modernisé par Antigravity AI (Expert Distributed Systems)*
+© 2026 Ecole Militaire Polytechnique. Tous droits réservés.
