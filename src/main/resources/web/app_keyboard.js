@@ -2,7 +2,8 @@
 document.addEventListener('keydown', (e) => {
     const tag = document.activeElement.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement.classList.contains('ql-editor')) return;
-    if (document.getElementById('login-page').style.display !== 'none') return;
+    if (document.getElementById('login-page').style.display !== 'none' || 
+        (document.getElementById('landing-page') && document.getElementById('landing-page').style.display !== 'none')) return;
 
     switch(e.key) {
         case 'c': case 'C':
