@@ -46,6 +46,7 @@ public class MailRestController {
 
         // Routes API
         app.post("/api/login", MailRestController::login);
+        app.post("/api/register", MailRestController::register);
         app.get("/api/inbox", MailRestController::getInbox);
         app.get("/api/messages/{id}", ctx -> getMessage(ctx));
         app.post("/api/messages/{id}/delete", ctx -> deleteMessage(ctx));
@@ -96,7 +97,39 @@ public class MailRestController {
             authService = (IAuthService) registry.lookup("AuthService");
             System.out.println("✅ Connecté au service d'authentification RMI (" + rmiHost + ").");
         } catch (Exception e) {
-            System.err.println("❌ Erreur : Impossible de se connecter au service RMI Auth.");
+            System.err.println("❌ Erreur : Impossible de se connecter au service RMI Auth. Démarrez AuthServerApp d'abord.");
+        }
+    }
+
+    /** Guard helper — returns true if authService is unavailable (sends 503 to client) */
+    private static boolean authServiceUnavailable(Context ctx) {
+        if (authService == null) {
+            ctx.status(503).result("{\"error\": \"Service d'authentification RMI non disponible. Vérifiez que AuthServerApp est démarré.\"}");
+            return true;
+        }
+        return false;
+    }
+
+    private static void register(Context ctx) throws Exception {
+        if (authServiceUnavailable(ctx)) return;
+        JSONObject body = new JSONObject(ctx.body());
+        String username = body.optString("username", "").trim();
+        String password = body.optString("password", "");
+
+        if (username.length() < 3 || password.isEmpty()) {
+            ctx.status(400).result("{\"error\": \"Nom d'utilisateur trop court ou mot de passe vide\"}");
+            return;
+        }
+        // Block reserved names
+        if (username.equalsIgnoreCase("admin")) {
+            ctx.status(403).result("{\"error\": \"Ce nom d'utilisateur est réservé\"}");
+            return;
+        }
+        boolean ok = authService.registerUser(username, password);
+        if (ok) {
+            ctx.status(201).result("{\"success\": true, \"message\": \"Compte créé avec succès\"}");
+        } else {
+            ctx.status(409).result("{\"error\": \"Ce nom d'utilisateur est déjà pris\"}");
         }
     }
 
@@ -343,18 +376,25 @@ public class MailRestController {
         String to = body.getString("to");
         String subject = body.getString("subject");
         String content = body.getString("content");
+        String fromEmail = from + "@mon-domaine.com";
+        String date = new java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", java.util.Locale.ENGLISH)
+                          .format(new java.util.Date());
 
         try (Socket socket = new Socket(SMTP_HOST, SMTP_PORT);
              BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
              PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
 
-            in.readLine();
+            in.readLine(); // greeting
             out.println("HELO localhost"); in.readLine();
-            out.println("MAIL FROM:<" + from + "@mon-domaine.com>"); in.readLine();
+            out.println("MAIL FROM:<" + fromEmail + ">"); in.readLine();
             out.println("RCPT TO:<" + to + ">"); in.readLine();
             out.println("DATA"); in.readLine();
+            // RFC 5321-compliant headers BEFORE the blank line
+            out.println("From: " + fromEmail);
+            out.println("To: " + to);
             out.println("Subject: " + subject);
-            out.println();
+            out.println("Date: " + date);
+            out.println(); // blank line separates headers from body
             out.println(content);
             out.println(".");
             String res = in.readLine();
@@ -466,9 +506,14 @@ public class MailRestController {
 
     private static void getClusterStatus(Context ctx) throws Exception {
         String token = ctx.header("Authorization");
+        if (token == null || authService == null || !authService.verifyToken(token)) {
+            ctx.status(401).result("{\"error\": \"Non autorisé\"}");
+            return;
+        }
         String username = authService.getUsernameFromToken(token);
         if (!"admin".equals(username)) {
-            ctx.status(403); return;
+            ctx.status(403).result("{\"error\": \"Accès refusé\"}");
+            return;
         }
 
         JSONArray nodes = new JSONArray();

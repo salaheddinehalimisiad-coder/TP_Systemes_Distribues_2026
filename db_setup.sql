@@ -43,7 +43,11 @@ END //
 DROP PROCEDURE IF EXISTS fetch_emails //
 CREATE PROCEDURE fetch_emails(IN p_username VARCHAR(255))
 BEGIN
-    SELECT * FROM emails WHERE recipient = p_username OR recipient = CONCAT(p_username, '@example.com');
+    -- Match by exact username OR by the username@any-domain format stored by SMTP
+    SELECT * FROM emails
+    WHERE recipient = p_username
+       OR recipient LIKE CONCAT(p_username, '@%')
+    ORDER BY created_at DESC;
 END //
 
 -- delete_email

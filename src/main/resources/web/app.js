@@ -114,10 +114,110 @@ function showAdmin() {
 function showAdminTab(tab) {
     document.getElementById('admin-users-tab').style.display = tab === 'users' ? 'block' : 'none';
     document.getElementById('admin-cluster-tab').style.display = tab === 'cluster' ? 'block' : 'none';
+    document.getElementById('admin-analytics-tab').style.display = tab === 'analytics' ? 'block' : 'none';
+    document.getElementById('admin-whitelabel-tab').style.display = tab === 'whitelabel' ? 'block' : 'none';
     
+    // Update button styles
+    ['users', 'cluster', 'analytics', 'whitelabel'].forEach(t => {
+        const btn = document.getElementById('btn-tab-' + t);
+        if (btn) {
+            if (t === tab) {
+                btn.style.background = 'var(--primary)';
+                btn.style.color = 'white';
+            } else {
+                btn.style.background = 'var(--bg-main)';
+                btn.style.color = 'var(--text-main)';
+            }
+        }
+    });
+
     if (tab === 'users') loadAdminUsers();
     else if (tab === 'cluster') loadClusterStatus();
+    else if (tab === 'analytics') loadAdminAnalytics();
 }
+
+let adminTrafficChart = null;
+let adminEngagementChart = null;
+
+function loadAdminAnalytics() {
+    // Analytics Business mock data
+    const ctxTraffic = document.getElementById('adminTrafficChart').getContext('2d');
+    const ctxEngagement = document.getElementById('adminEngagementChart').getContext('2d');
+    
+    if (adminTrafficChart) adminTrafficChart.destroy();
+    if (adminEngagementChart) adminEngagementChart.destroy();
+
+    adminTrafficChart = new Chart(ctxTraffic, {
+        type: 'bar',
+        data: {
+            labels: ['00h', '04h', '08h', '12h', '16h', '20h'],
+            datasets: [{
+                label: 'Emails traités',
+                data: [12, 5, 85, 120, 95, 40],
+                backgroundColor: '#1a73e8',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } }
+        }
+    });
+
+    adminEngagementChart = new Chart(ctxEngagement, {
+        type: 'doughnut',
+        data: {
+            labels: ['Ouverts', 'Ignorés', 'Répondus'],
+            datasets: [{
+                data: [65, 20, 15],
+                backgroundColor: ['#1e8e3e', '#fce8e6', '#fbbc04'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            cutout: '70%',
+            responsive: true,
+            plugins: { legend: { position: 'bottom' } }
+        }
+    });
+}
+
+function updateWhiteLabel() {
+    const brandName = document.getElementById('wl-brand-name').value;
+    const primaryColor = document.getElementById('wl-primary-color').value;
+    
+    const loginBrand = document.getElementById('txt-brand-mail-login');
+    const appBrand = document.getElementById('txt-brand-mail');
+    
+    if (loginBrand) loginBrand.textContent = brandName;
+    if (appBrand) appBrand.textContent = brandName;
+    
+    document.documentElement.style.setProperty('--primary', primaryColor);
+    
+    localStorage.setItem('wl_brand', brandName);
+    localStorage.setItem('wl_color', primaryColor);
+}
+
+function loadWhiteLabel() {
+    const brand = localStorage.getItem('wl_brand');
+    const color = localStorage.getItem('wl_color');
+    
+    if (brand && document.getElementById('txt-brand-mail')) {
+        document.getElementById('txt-brand-mail').textContent = brand;
+        document.getElementById('txt-brand-mail-login').textContent = brand;
+        const wlInputName = document.getElementById('wl-brand-name');
+        if (wlInputName) wlInputName.value = brand;
+    }
+    
+    if (color) {
+        document.documentElement.style.setProperty('--primary', color);
+        const wlInputColor = document.getElementById('wl-primary-color');
+        if (wlInputColor) wlInputColor.value = color;
+    }
+}
+
+// Load White Label setting at start
+loadWhiteLabel();
 
 async function loadClusterStatus() {
     const list = document.getElementById('cluster-node-list');
@@ -171,11 +271,7 @@ function showViewer() {
     showSection('viewer-section');
 }
 
-function showContacts() {
-    showSection('contacts-section');
-    updateNavSelection(3);
-    loadContacts();
-}
+// NOTE: showContacts() is defined above at line ~148. Duplicate removed.
 
 function showSent() {
     // Sent emails not stored separately - show info toast
@@ -217,11 +313,7 @@ function composeToContact(email) {
     document.getElementById('send-subject').focus();
 }
 
-function showAdmin() {
-    showSection('admin-section');
-    updateNavSelection(4); // Or appropriate index
-    loadAdminUsers();
-}
+// NOTE: showAdmin() is defined above at line ~108. Duplicate removed.
 
 async function loadAdminUsers() {
     const list = document.getElementById('admin-user-list');
@@ -484,7 +576,63 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 function logout() {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
+    authToken = null;
     location.reload();
+}
+
+// --- Register Form ---
+function showRegisterForm() {
+    document.getElementById('login-form').style.display = 'none';
+    document.getElementById('register-form').style.display = 'block';
+    document.getElementById('login-error').style.display = 'none';
+}
+
+function showLoginForm() {
+    document.getElementById('register-form').style.display = 'none';
+    document.getElementById('login-form').style.display = 'block';
+    document.getElementById('register-error').style.display = 'none';
+}
+
+const registerForm = document.getElementById('register-form');
+if (registerForm) {
+    registerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('reg-username').value.trim();
+        const password = document.getElementById('reg-password').value;
+        const errorEl  = document.getElementById('register-error');
+        const btn = e.target.querySelector('button');
+
+        if (!username || username.length < 3) {
+            errorEl.textContent = 'Le nom doit comporter au moins 3 caractères.';
+            errorEl.style.display = 'block';
+            return;
+        }
+
+        btn.textContent = 'Création...';
+        btn.disabled = true;
+        try {
+            const res = await fetch(`${API_URL}/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast('✅ Compte créé ! Connectez-vous.', 'success');
+                showLoginForm();
+                document.getElementById('username').value = username;
+            } else {
+                errorEl.textContent = data.error || 'Erreur lors de la création.';
+                errorEl.style.display = 'block';
+            }
+        } catch (err) {
+            errorEl.textContent = 'Erreur de communication avec le serveur.';
+            errorEl.style.display = 'block';
+        } finally {
+            btn.textContent = 'Créer le compte';
+            btn.disabled = false;
+        }
+    });
 }
 
 function showApp() {
@@ -770,9 +918,14 @@ async function summarizeCurrentEmail() {
 function replyToCurrentMessage() {
     if (!selectedMessageId) return;
     openCompose();
+    // Pre-fill subject
     const subject = document.getElementById('view-subject').textContent;
-    document.getElementById('send-subject').value = `Re: ${subject}`;
-    document.getElementById('send-to').focus();
+    document.getElementById('send-subject').value = subject.startsWith('Re: ') ? subject : `Re: ${subject}`;
+    // Pre-fill To: with the sender's address
+    const fromText = document.getElementById('view-from').textContent;
+    document.getElementById('send-to').value = fromText;
+    // Focus on the editor
+    if (emailQuill) emailQuill.focus();
 }
 
 async function deleteCurrentMessage() {
@@ -900,24 +1053,7 @@ document.getElementById('send-form').addEventListener('submit', (e) => {
     };
 });
 
-        if (response.status === 401) return logout();
-
-        if (response.ok) {
-            const lang = translations[currentLang];
-            closeCompose();
-            e.target.reset();
-            showToast(lang["msg-send-success"], 'success');
-        } else {
-            const lang = translations[currentLang];
-            showToast(lang["msg-send-fail"], 'error');
-        }
-    } catch (err) {
-        showToast('Erreur lors de l\'envoi', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = originalText;
-    }
-});
+// (Orphaned code removed — was causing a fatal SyntaxError)
 
 // --- Dashboard Stats & Charts ---
 let activityChart = null;
@@ -1013,4 +1149,75 @@ function formatEmailDate(dateStr) {
             return d.toLocaleDateString('fr-FR', {weekday: 'short', hour: '2-digit', minute: '2-digit'});
         return d.toLocaleDateString('fr-FR', {day: '2-digit', month: 'short'});
     } catch(_) { return dateStr || ''; }
+}
+
+// --- Gestionnaire de Tâches ---
+let mailTasks = JSON.parse(localStorage.getItem('mail_tasks')) || [];
+
+function toggleTasksPanel() {
+    const panel = document.getElementById('tasks-panel');
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) renderTasks();
+}
+
+function renderTasks() {
+    const list = document.getElementById('tasks-list');
+    if (mailTasks.length === 0) {
+        list.innerHTML = '<div style="text-align:center; color:var(--text-secondary); margin-top:40px;"><i class="fas fa-clipboard-list" style="font-size:48px; opacity:0.3; margin-bottom:12px; display:block;"></i><span style="font-size:14px;">Aucune tâche pour le moment.</span></div>';
+        return;
+    }
+    
+    list.innerHTML = mailTasks.map(t => `
+        <div class="task-item ${t.completed ? 'completed' : ''}">
+            <input type="checkbox" ${t.completed ? 'checked' : ''} onclick="toggleTaskStatus(${t.id})">
+            <span style="flex:1; font-size:14px; color:var(--text-main); line-height:1.4;">${t.text}</span>
+            <i class="fas fa-trash-alt" style="color:var(--error); cursor:pointer; font-size:14px; opacity:0.6; transition:opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6" onclick="deleteTask(${t.id})"></i>
+        </div>
+    `).join('');
+}
+
+function addTaskFromInput() {
+    const input = document.getElementById('new-task-input');
+    const text = input.value.trim();
+    if (text) {
+        addTask(text);
+        input.value = '';
+    }
+}
+
+function addTask(text) {
+    mailTasks.unshift({ id: Date.now(), text: text, completed: false });
+    saveTasks();
+    renderTasks();
+}
+
+function toggleTaskStatus(id) {
+    const task = mailTasks.find(t => t.id === id);
+    if (task) {
+        task.completed = !task.completed;
+        saveTasks();
+        renderTasks();
+    }
+}
+
+function deleteTask(id) {
+    mailTasks = mailTasks.filter(t => t.id !== id);
+    saveTasks();
+    renderTasks();
+}
+
+function saveTasks() {
+    localStorage.setItem('mail_tasks', JSON.stringify(mailTasks));
+}
+
+function turnEmailIntoTask() {
+    const subject = document.getElementById('view-subject').textContent;
+    if (subject) {
+        addTask(`Traiter l'email : "${subject}"`);
+        const panel = document.getElementById('tasks-panel');
+        if (!panel.classList.contains('open')) {
+            toggleTasksPanel();
+        }
+        showToast('Tâche créée !', 'success');
+    }
 }

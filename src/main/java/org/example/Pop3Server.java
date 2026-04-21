@@ -124,6 +124,9 @@ class Pop3Session extends Thread {
                     case "RETR":
                         handleRetr(argument);
                         break;
+                    case "TOP":
+                        handleTop(argument);
+                        break;
                     case "DELE":
                         handleDele(argument);
                         break;
@@ -237,6 +240,55 @@ class Pop3Session extends Thread {
         }
     }
 
+    /**
+     * TOP msg n — RFC 1939 §7
+     * Retourne les headers + les n premières lignes du corps.
+     * Utilisé par MailRestController.getInbox() avec n=0 (headers seulement).
+     */
+    private void handleTop(String arg) {
+        if (!authenticated) {
+            out.println("-ERR Authentication required");
+            return;
+        }
+        try {
+            String[] parts = arg.trim().split("\\s+", 2);
+            int index = Integer.parseInt(parts[0]) - 1;
+            int maxBodyLines = (parts.length > 1) ? Integer.parseInt(parts[1]) : 0;
+
+            if (index < 0 || index >= emails.size()) {
+                out.println("-ERR No such message");
+                return;
+            }
+
+            String content = (String) emails.get(index).get("content");
+            out.println("+OK top of message follows");
+
+            // Split headers from body at the first blank line
+            String[] sections = content.split("\\r?\\n\\r?\\n", 2);
+            String headers = sections[0];
+            String body    = sections.length > 1 ? sections[1] : "";
+
+            // Always send all headers
+            out.println(headers);
+            out.println(); // blank separator line
+
+            // Send up to maxBodyLines lines of the body
+            if (maxBodyLines > 0) {
+                String[] bodyLines = body.split("\\r?\\n");
+                int limit = Math.min(maxBodyLines, bodyLines.length);
+                for (int i = 0; i < limit; i++) {
+                    String line = bodyLines[i];
+                    // RFC 1939 dot-stuffing
+                    if (line.startsWith(".")) line = "." + line;
+                    out.println(line);
+                }
+            }
+            out.println(".");
+        } catch (Exception e) {
+            out.println("-ERR Invalid TOP arguments");
+        }
+    }
+
     private void handleDele(String arg) {
         if (!authenticated) {
             out.println("-ERR Authentication required");
@@ -291,7 +343,8 @@ class Pop3Session extends Thread {
         send("USER");
         send("RESP-CODES");
         send("EXPIRE 31");
-        send("Implementation: CustomJavaPop3Server");
+        send("IMPLEMENTATION CustomJavaPop3Server");
+        send("."); // RFC 2449: Multi-line response must end with a single dot
     }
 
     private void send(String msg) {

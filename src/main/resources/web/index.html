@@ -35,6 +35,25 @@
                 </div>
                 <div id="login-error" style="color: var(--error); font-size: 14px; margin-bottom: 20px; text-align: left; display: none;"></div>
                 <button type="submit" class="btn-login" id="txt-btn-login">Connexion</button>
+                <p style="text-align:center; margin-top:16px; font-size:13px; color:var(--text-secondary)">
+                    Pas encore de compte ? <a href="#" onclick="showRegisterForm()" style="color:var(--primary); font-weight:600;">Créer un compte</a>
+                </p>
+            </form>
+            <!-- Register Form (hidden by default) -->
+            <form id="register-form" style="display:none;">
+                <div class="auth-input-group">
+                    <label>Nom d'utilisateur</label>
+                    <input type="text" id="reg-username" placeholder="Choisissez un identifiant" required>
+                </div>
+                <div class="auth-input-group">
+                    <label>Mot de passe</label>
+                    <input type="password" id="reg-password" placeholder="••••••••" required>
+                </div>
+                <div id="register-error" style="color: var(--error); font-size: 14px; margin-bottom: 20px; text-align: left; display: none;"></div>
+                <button type="submit" class="btn-login" style="background:var(--success, #1e8e3e);">Créer le compte</button>
+                <p style="text-align:center; margin-top:16px; font-size:13px; color:var(--text-secondary)">
+                    <a href="#" onclick="showLoginForm()" style="color:var(--primary); font-weight:600;">← Retour à la connexion</a>
+                </p>
             </form>
         </div>
     </div>
@@ -60,6 +79,7 @@
                 <a href="#" class="nav-link active" id="nav-inbox" onclick="showInbox()">
                     <i class="fas fa-inbox"></i>
                     <span id="txt-nav-inbox">Boîte de réception</span>
+                    <span id="inbox-badge" style="margin-left:auto; background:#1a73e8; color:white; border-radius:10px; font-size:11px; padding:2px 7px; display:none;">0</span>
                 </a>
                 <a href="#" class="nav-link" id="nav-settings" onclick="showSettings()">
                     <i class="fas fa-cog"></i>
@@ -72,7 +92,6 @@
                 <a href="#" class="nav-link" id="nav-sent" onclick="showSent()">
                     <i class="far fa-paper-plane"></i>
                     <span id="txt-nav-sent">Envoyés</span>
-                    <span id="inbox-badge" style="margin-left:auto; background:#1a73e8; color:white; border-radius:10px; font-size:11px; padding:2px 7px; display:none;">0</span>
                 </a>
                 <a href="#" class="nav-link" id="nav-admin" style="display:none;" onclick="showAdmin()">
                     <i class="fas fa-user-shield"></i>
@@ -100,6 +119,7 @@
                     <input type="text" id="search-input" placeholder="Rechercher des emails ou des contacts...">
                 </div>
                 <div class="user-controls">
+                    <div class="icon-btn" onclick="toggleTasksPanel()" title="Gestionnaire de Tâches"><i class="fas fa-check-square"></i></div>
                     <div class="icon-btn" id="txt-notif-btn"><i class="far fa-bell"></i></div>
                     <div class="icon-btn" onclick="toggleDarkMode()" id="dark-mode-btn"><i class="fas fa-moon"></i></div>
                     <div class="icon-btn" onclick="showSettings()"><i class="fas fa-cog"></i></div>
@@ -177,8 +197,10 @@
                     </div>
                     <div class="content-area">
                         <div style="display:flex; gap:16px; margin-bottom:20px;">
-                            <button class="btn-send" style="background:var(--primary); padding:8px 16px; font-size:13px;" onclick="showAdminTab('users')">Gestion Utilisateurs</button>
-                            <button class="btn-send" style="background:var(--bg-main); color:var(--text-main); padding:8px 16px; font-size:13px;" onclick="showAdminTab('cluster')">Moniteur de Cluster</button>
+                            <button class="btn-send" style="background:var(--primary); padding:8px 16px; font-size:13px;" id="btn-tab-users" onclick="showAdminTab('users')">Gestion Utilisateurs</button>
+                            <button class="btn-send" style="background:var(--bg-main); color:var(--text-main); padding:8px 16px; font-size:13px;" id="btn-tab-cluster" onclick="showAdminTab('cluster')">Moniteur de Cluster</button>
+                            <button class="btn-send" style="background:var(--bg-main); color:var(--text-main); padding:8px 16px; font-size:13px;" id="btn-tab-analytics" onclick="showAdminTab('analytics')">Analytique Business</button>
+                            <button class="btn-send" style="background:var(--bg-main); color:var(--text-main); padding:8px 16px; font-size:13px;" id="btn-tab-whitelabel" onclick="showAdminTab('whitelabel')">Marque Blanche</button>
                         </div>
 
                         <div id="admin-users-tab">
@@ -203,6 +225,38 @@
                             <div style="margin-bottom:16px; font-size:14px;">Node Actuel : <span id="current-node-name" style="font-weight:700; color:var(--primary);">...</span></div>
                             <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:16px;" id="cluster-node-list">
                                 <!-- Nodes health injected here -->
+                            </div>
+                        </div>
+
+                        <div id="admin-analytics-tab" style="display:none;">
+                            <h3 style="margin-bottom: 16px;">Performances du Système</h3>
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+                                <div class="dashboard-widget" style="background:var(--bg-white); border:1px solid var(--border-color); border-radius:12px; padding:20px;">
+                                    <h4 style="color:var(--text-secondary); margin-bottom:12px;">Trafic Global (Heures)</h4>
+                                    <canvas id="adminTrafficChart"></canvas>
+                                </div>
+                                <div class="dashboard-widget" style="background:var(--bg-white); border:1px solid var(--border-color); border-radius:12px; padding:20px;">
+                                    <h4 style="color:var(--text-secondary); margin-bottom:12px;">Taux d'ouverture / Réponse</h4>
+                                    <canvas id="adminEngagementChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="admin-whitelabel-tab" style="display:none;">
+                            <h3 style="margin-bottom: 16px;"><i class="fas fa-palette" style="color:var(--primary); margin-right:8px;"></i>Configuration Marque Blanche (White Label)</h3>
+                            <div style="background:var(--bg-white); border:1px solid var(--border-color); border-radius:12px; padding:24px;">
+                                <p style="color:var(--text-secondary); margin-bottom:20px; font-size:14px;">Personnalisez l'application pour vos clients avec leur propre identité visuelle.</p>
+                                <div style="display:grid; gap:20px; max-width:400px;">
+                                    <div class="auth-input-group">
+                                        <label>Nom de la Marque</label>
+                                        <input type="text" id="wl-brand-name" value="Mail" oninput="updateWhiteLabel()">
+                                    </div>
+                                    <div class="auth-input-group">
+                                        <label>Couleur Primaire</label>
+                                        <input type="color" id="wl-primary-color" value="#1a73e8" onchange="updateWhiteLabel()" style="width:100%; height:48px; border:1px solid var(--border-color); border-radius:4px; padding:4px; cursor:pointer;">
+                                    </div>
+                                    <button class="btn-send" style="background:var(--primary);" onclick="showToast('Thème sauvegardé', 'success')">Sauvegarder</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -251,6 +305,9 @@
                         <div style="flex: 1"></div>
                         <button class="btn-ai-summarize" id="btn-ai-summarize" onclick="summarizeCurrentEmail()" title="Résumer avec l'IA">
                             <i class="fas fa-magic"></i> Résumé IA
+                        </button>
+                        <button class="btn-send" style="background:var(--bg-main); color:var(--text-main); padding:8px 16px; border-radius:20px; font-size:13px;" onclick="turnEmailIntoTask()" title="Créer une tâche à partir de cet email">
+                            <i class="fas fa-tasks"></i> Transformer en Tâche
                         </button>
                         <div class="icon-btn" onclick="replyToCurrentMessage()" title="Répondre"><i class="fas fa-reply"></i></div>
                         <div class="icon-btn" onclick="deleteCurrentMessage()" title="Supprimer"><i class="far fa-trash-alt"></i></div>
@@ -303,9 +360,25 @@
         </div>
     </div>
 
+    <!-- Tasks / To-Do Panel -->
+    <div id="tasks-panel" class="tasks-panel">
+        <div class="tasks-header">
+            <span><i class="fas fa-check-square" style="color:var(--primary); margin-right:8px;"></i>Mes Tâches</span>
+            <i class="fas fa-times" onclick="toggleTasksPanel()" style="cursor:pointer; color:var(--text-secondary)"></i>
+        </div>
+        <div class="tasks-body" id="tasks-list">
+            <!-- Tasks injected here -->
+        </div>
+        <div class="task-input-wrapper">
+            <input type="text" id="new-task-input" placeholder="Ajouter une tâche..." onkeypress="if(event.key === 'Enter') addTaskFromInput()">
+            <button class="btn-send" style="padding:10px 16px;" onclick="addTaskFromInput()"><i class="fas fa-plus"></i></button>
+        </div>
+    </div>
+
     <!-- Toast Container -->
     <div id="toast-container" style="position: fixed; top: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none;"></div>
 
     <script src="app.js"></script>
+    <script src="app_keyboard.js"></script>
 </body>
 </html>

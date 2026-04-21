@@ -189,7 +189,7 @@ public class DatabaseManager {
     // Admin : Get detailed stats for all users
     public static java.util.List<java.util.Map<String, Object>> getUsersDetailedStats() {
         java.util.List<java.util.Map<String, Object>> allStats = new java.util.ArrayList<>();
-        String sql = "SELECT u.username, COUNT(e.id) as mail_count, SUM(IFNULL(LENGTH(e.body), 0)) as storage_used " +
+        String sql = "SELECT u.username, COUNT(e.id) as mail_count, SUM(IFNULL(LENGTH(e.content), 0)) as storage_used " +
                      "FROM users u " +
                      "LEFT JOIN emails e ON u.username = e.recipient " +
                      "GROUP BY u.username " +
