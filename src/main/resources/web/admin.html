@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Distributed Mail System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="admin.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="sidebar glass-panel">
+        <div class="logo">
+            <i class="fas fa-shield-halved"></i>
+            <span>ADMIN <span style="color: var(--accent-blue)">CORE</span></span>
+        </div>
+        <ul class="nav-links">
+            <li class="nav-item active" onclick="switchTab('dashboard')">
+                <i class="fas fa-chart-pie"></i> Vue d'ensemble
+            </li>
+            <li class="nav-item" onclick="switchTab('broadcast')">
+                <i class="fas fa-bullhorn"></i> Diffusion Globale
+            </li>
+            <li class="nav-item" onclick="switchTab('users')">
+                <i class="fas fa-user-shield"></i> Utilisateurs
+            </li>
+            <li class="nav-item" onclick="switchTab('nodes')">
+                <i class="fas fa-server"></i> Nœuds du Cluster
+            </li>
+        </ul>
+        <div style="margin-top: auto;">
+            <div class="nav-item" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> Déconnexion
+            </div>
+        </div>
+    </div>
+
+    <main class="main-content">
+        <header>
+            <div class="header-title">
+                <h1>Console de Contrôle</h1>
+                <p style="color: var(--text-secondary); font-size: 14px;">Supervision du système distribué EMP Mail</p>
+            </div>
+            <div class="admin-user glass-panel" style="padding: 8px 16px; display: flex; align-items: center; gap: 12px;">
+                <div style="text-align: right;">
+                    <div style="font-weight: 600; font-size: 14px;">Administrateur</div>
+                    <div style="font-size: 12px; color: var(--success);">Système En Ligne</div>
+                </div>
+                <img src="https://ui-avatars.com/api/?name=Admin&background=0ea5e9&color=fff" style="width: 36px; height: 36px; border-radius: 50%;">
+            </div>
+        </header>
+
+        <section id="tab-dashboard">
+            <div class="stats-grid">
+                <div class="stat-card glass-panel">
+                    <div class="stat-icon" style="background: rgba(56, 189, 248, 0.1); color: var(--accent-blue);"><i class="fas fa-users"></i></div>
+                    <div class="stat-info">
+                        <div class="stat-label">Utilisateurs</div>
+                        <div class="stat-val" id="total-users-val">0</div>
+                    </div>
+                </div>
+                <div class="stat-card glass-panel">
+                    <div class="stat-icon" style="background: rgba(129, 140, 248, 0.1); color: var(--accent-purple);"><i class="fas fa-database"></i></div>
+                    <div class="stat-info">
+                        <div class="stat-label">Stockage Global</div>
+                        <div class="stat-val" id="global-storage-val">0 Mo</div>
+                    </div>
+                </div>
+                <div class="stat-card glass-panel">
+                    <div class="stat-icon" style="background: rgba(34, 197, 94, 0.1); color: var(--success);"><i class="fas fa-bolt"></i></div>
+                    <div class="stat-info">
+                        <div class="stat-label">Disponibilité</div>
+                        <div class="stat-val">99.9%</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px;">
+                <div class="glass-panel" style="padding: 24px;">
+                    <h3 style="margin-bottom: 20px;">Répartition du Stockage (Top Utilisateurs)</h3>
+                    <canvas id="storageChart" style="max-height: 300px;"></canvas>
+                </div>
+                <div class="glass-panel" style="padding: 24px;">
+                    <h3 style="margin-bottom: 20px;">Trafic du Cluster</h3>
+                    <canvas id="trafficChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+
+            <div class="glass-panel" style="padding: 24px;">
+                <h3 style="margin-bottom: 20px;">Infrastructure Cluster (Temps Réel)</h3>
+                <div class="cluster-grid" id="cluster-preview">
+                    <!-- Nodes will be injected here -->
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-broadcast" style="display: none;">
+            <div class="glass-panel" style="padding: 40px; max-width: 800px; margin: 0 auto;">
+                <h2 style="margin-bottom: 8px;"><i class="fas fa-bullhorn" style="color: var(--accent-blue)"></i> Diffusion Globale</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 32px;">Envoyez un email d'alerte à tous les comptes du système.</p>
+                
+                <div class="auth-input-group" style="text-align: left;">
+                    <label>Sujet du Message</label>
+                    <input type="text" id="broadcast-subject" placeholder="Ex: Maintenance du système" style="width: 100%; padding: 12px; margin-bottom: 20px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 8px; color: white;">
+                    
+                    <label>Contenu de l'Alerte</label>
+                    <textarea id="broadcast-content" rows="6" placeholder="Tapez votre message ici..." style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 8px; color: white; resize: vertical;"></textarea>
+                </div>
+                
+                <button onclick="sendBroadcast()" style="width: 100%; height: 50px; background: var(--accent-blue); border: none; border-radius: 8px; color: white; font-weight: 600; margin-top: 24px; cursor: pointer;">
+                    Envoyer à tous les utilisateurs
+                </button>
+            </div>
+        </section>
+
+        <section id="tab-analytics" style="display: none;">
+            <div class="glass-panel" style="padding: 24px; margin-bottom: 24px;">
+                <h3>Analyse de l'activité hebdomadaire</h3>
+                <canvas id="activityChart" style="max-height: 400px;"></canvas>
+            </div>
+        </section>
+
+        <section id="tab-users" style="display: none;">
+            <div class="glass-panel" style="padding: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                    <h3>Base de Données Utilisateurs</h3>
+                    <div class="search-box glass-panel" style="padding: 8px 16px;">
+                        <i class="fas fa-search" style="color: var(--text-secondary); margin-right: 8px;"></i>
+                        <input type="text" placeholder="Rechercher un utilisateur..." style="border: none; background: none; margin: 0; padding: 0; width: 200px; font-size: 14px;">
+                    </div>
+                </div>
+                
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>Profil</th>
+                            <th>Mails</th>
+                            <th>Consommation</th>
+                            <th>Limite</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table-body">
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="tab-nodes" style="display: none;">
+             <div class="glass-panel" style="padding: 24px;">
+                <h3>Status détaillé des Nœuds</h3>
+                <div class="cluster-grid" style="margin-top: 24px;" id="nodes-detailed"></div>
+             </div>
+        </section>
+    </main>
+
+    <!-- Quota Modal -->
+    <div id="quota-modal" class="modal">
+        <div class="modal-content glass-panel">
+            <h3>Modifier Quota</h3>
+            <p style="margin-top: 10px; color: var(--text-secondary); font-size: 14px;">Utilisateur: <span id="modal-username"></span></p>
+            <input type="number" id="quota-input" placeholder="Limite en Mo (ex: 100)">
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button class="btn-action" style="flex: 1; background: var(--border);" onclick="closeModal()">Annuler</button>
+                <button class="btn-action btn-quota" style="flex: 1;" onclick="applyQuota()">Appliquer</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>
