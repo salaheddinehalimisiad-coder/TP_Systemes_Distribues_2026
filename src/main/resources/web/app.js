@@ -4,11 +4,56 @@ let currentMessages = [];
 let currentCategory = 'primary';
 let selectedMessageId = null;
 
-// Initialisation
-if (authToken) {
-    showApp();
-    loadInbox();
+// --- Slideshow Logic ---
+let slideIndex = 0;
+function showSlides() {
+    try {
+        let slides = document.getElementsByClassName("slide");
+        if (slides.length === 0) return;
+        for (let i = 0; i < slides.length; i++) {
+            slides[i].classList.remove("active");
+            slides[i].style.zIndex = "0";
+        }
+        slideIndex++;
+        if (slideIndex > slides.length) { slideIndex = 1 }
+        const activeSlide = slides[slideIndex - 1];
+        activeSlide.classList.add("active");
+        activeSlide.style.zIndex = "1";
+        setTimeout(showSlides, 5000);
+    } catch (e) {
+        console.error("Diaporama Error:", e);
+    }
 }
+
+// --- Landing Page Logic ---
+function showLoginFromLanding() {
+    const login = document.getElementById('login-page');
+    if (login) {
+        login.style.display = 'flex';
+        login.style.opacity = '1';
+        login.style.zIndex = '99999';
+    }
+}
+
+function closeLoginForm() {
+    const login = document.getElementById('login-page');
+    if (login) login.style.display = 'none';
+}
+
+// Initialisation
+document.addEventListener('DOMContentLoaded', () => {
+    // Force start slideshow if on landing page
+    if (!localStorage.getItem('auth_token')) {
+        showSlides();
+    } else {
+        document.getElementById('landing-page').style.display = 'none';
+        showApp();
+        loadInbox();
+    }
+    
+    // Manual binding just in case
+    document.querySelector('.btn-connexion-top')?.addEventListener('click', showLoginFromLanding);
+});
 
 // --- Dark Mode ---
 function toggleDarkMode() {
@@ -31,6 +76,21 @@ if (localStorage.getItem('dark_mode') === 'true') {
 }
 
 // --- UI Feedback (Toasts) ---
+// Search Logic
+document.getElementById('search-input')?.addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase();
+    if (!term) {
+        renderMessageList(currentMessages);
+        return;
+    }
+    const filtered = currentMessages.filter(m => 
+        m.subject.toLowerCase().includes(term) || 
+        m.sender.toLowerCase().includes(term) || 
+        m.content.toLowerCase().includes(term)
+    );
+    renderMessageList(filtered);
+});
+
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
@@ -103,147 +163,22 @@ function showDashboard() {
 function showSettings() {
     showSection('settings-section');
     setActiveNav('nav-settings');
-}
-
-function showAdmin() {
-    showSection('admin-section');
-    setActiveNav('nav-admin');
-    showAdminTab('users');
-}
-
-function showAdminTab(tab) {
-    document.getElementById('admin-users-tab').style.display = tab === 'users' ? 'block' : 'none';
-    document.getElementById('admin-cluster-tab').style.display = tab === 'cluster' ? 'block' : 'none';
-    document.getElementById('admin-analytics-tab').style.display = tab === 'analytics' ? 'block' : 'none';
-    document.getElementById('admin-whitelabel-tab').style.display = tab === 'whitelabel' ? 'block' : 'none';
+    const user = localStorage.getItem('auth_user');
+    const nameInput = document.getElementById('settings-display-name');
+    if (nameInput) nameInput.value = localStorage.getItem(`display_name_${user}`) || '';
     
-    // Update button styles
-    ['users', 'cluster', 'analytics', 'whitelabel'].forEach(t => {
-        const btn = document.getElementById('btn-tab-' + t);
-        if (btn) {
-            if (t === tab) {
-                btn.style.background = 'var(--primary)';
-                btn.style.color = 'white';
-            } else {
-                btn.style.background = 'var(--bg-main)';
-                btn.style.color = 'var(--text-main)';
-            }
+    const avatar = localStorage.getItem(`profile_img_${user}`);
+    const preview = document.getElementById('settings-avatar-preview');
+    if (preview) {
+        if (avatar) {
+            preview.innerHTML = `<img src="${avatar}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        } else {
+            preview.innerHTML = user ? user.charAt(0).toUpperCase() : 'U';
         }
-    });
-
-    if (tab === 'users') loadAdminUsers();
-    else if (tab === 'cluster') loadClusterStatus();
-    else if (tab === 'analytics') loadAdminAnalytics();
-}
-
-let adminTrafficChart = null;
-let adminEngagementChart = null;
-
-function loadAdminAnalytics() {
-    // Analytics Business mock data
-    const ctxTraffic = document.getElementById('adminTrafficChart').getContext('2d');
-    const ctxEngagement = document.getElementById('adminEngagementChart').getContext('2d');
-    
-    if (adminTrafficChart) adminTrafficChart.destroy();
-    if (adminEngagementChart) adminEngagementChart.destroy();
-
-    adminTrafficChart = new Chart(ctxTraffic, {
-        type: 'bar',
-        data: {
-            labels: ['00h', '04h', '08h', '12h', '16h', '20h'],
-            datasets: [{
-                label: 'Emails traités',
-                data: [12, 5, 85, 120, 95, 40],
-                backgroundColor: '#1a73e8',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: { legend: { display: false } }
-        }
-    });
-
-    adminEngagementChart = new Chart(ctxEngagement, {
-        type: 'doughnut',
-        data: {
-            labels: ['Ouverts', 'Ignorés', 'Répondus'],
-            datasets: [{
-                data: [65, 20, 15],
-                backgroundColor: ['#1e8e3e', '#fce8e6', '#fbbc04'],
-                borderWidth: 0
-            }]
-        },
-        options: {
-            cutout: '70%',
-            responsive: true,
-            plugins: { legend: { position: 'bottom' } }
-        }
-    });
-}
-
-function updateWhiteLabel() {
-    const brandName = document.getElementById('wl-brand-name').value;
-    const primaryColor = document.getElementById('wl-primary-color').value;
-    
-    const loginBrand = document.getElementById('txt-brand-mail-login');
-    const appBrand = document.getElementById('txt-brand-mail');
-    
-    if (loginBrand) loginBrand.textContent = brandName;
-    if (appBrand) appBrand.textContent = brandName;
-    
-    document.documentElement.style.setProperty('--primary', primaryColor);
-    
-    localStorage.setItem('wl_brand', brandName);
-    localStorage.setItem('wl_color', primaryColor);
-}
-
-function loadWhiteLabel() {
-    const brand = localStorage.getItem('wl_brand');
-    const color = localStorage.getItem('wl_color');
-    
-    if (brand && document.getElementById('txt-brand-mail')) {
-        document.getElementById('txt-brand-mail').textContent = brand;
-        document.getElementById('txt-brand-mail-login').textContent = brand;
-        const wlInputName = document.getElementById('wl-brand-name');
-        if (wlInputName) wlInputName.value = brand;
-    }
-    
-    if (color) {
-        document.documentElement.style.setProperty('--primary', color);
-        const wlInputColor = document.getElementById('wl-primary-color');
-        if (wlInputColor) wlInputColor.value = color;
     }
 }
 
-// Load White Label setting at start
-loadWhiteLabel();
 
-async function loadClusterStatus() {
-    const list = document.getElementById('cluster-node-list');
-    list.innerHTML = '<div style="padding:20px;"><i class="fas fa-circle-notch fa-spin"></i> Audit du cluster en cours...</div>';
-    try {
-        const res = await fetch(`${API_URL}/admin/cluster`, { headers: { 'Authorization': authToken } });
-        const data = await res.json();
-        
-        document.getElementById('current-node-name').textContent = data.currentNode;
-        
-        list.innerHTML = data.nodes.map(n => `
-            <div style="background:var(--bg-white); border:1px solid var(--border-color); border-radius:12px; padding:20px; transition:var(--transition); box-shadow:0 4px 12px rgba(0,0,0,0.05);">
-                <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
-                    <span style="font-weight:700;">${n.name}</span>
-                    <span class="admin-badge ${n.status === 'Online' ? 'badge-active' : ''}" style="background:${n.status==='Online'?'#e6f4ea':'#fce8e6'}; color:${n.status==='Online'?'#1e8e3e':'#d93025'};">${n.status}</span>
-                </div>
-                <div style="font-size:12px; color:var(--text-secondary); display:flex; gap:16px;">
-                    <span><i class="fas fa-tachometer-alt"></i> ${n.latency}</span>
-                    <span><i class="fas fa-server"></i> REST API: 8080</span>
-                </div>
-            </div>
-        `).join('');
-    } catch (err) {
-        list.innerHTML = '<div style="color:var(--error); padding:20px;">Échec de la communication avec le contrôleur de cluster.</div>';
-    }
-}
 
 function showContacts() {
     showSection('contacts-section');
@@ -274,10 +209,25 @@ function showViewer() {
 // NOTE: showContacts() is defined above at line ~148. Duplicate removed.
 
 function showSent() {
-    // Sent emails not stored separately - show info toast
-    showToast(currentLang === 'ar' ? 'صندوق المرسل سيتم دعمه قريباً' :
-        (currentLang === 'en' ? 'Sent folder coming soon (IMAP)' : 'Dossier Envoyés : bientôt disponible (IMAP)'), 'info');
-    showInbox();
+    hideAllSections();
+    showSection('inbox-section'); // Re-use inbox view for list
+    setActiveNav('nav-sent');
+    currentFolder = 'sent';
+    loadSent();
+}
+
+async function loadSent() {
+    try {
+        const res = await fetch(`${API_URL}/sent`, {
+            headers: { 'Authorization': authToken }
+        });
+        if (res.ok) {
+            currentMessages = await res.json();
+            renderMessageList(currentMessages);
+        }
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 async function loadContacts() {
@@ -342,166 +292,9 @@ async function loadAdminUsers() {
     }
 }
 
-// --- Internationalization (i18n) ---
-const translations = {
-    fr: {
-        "txt-brand-mail": "Mail",
-        "txt-brand-mail-login": "Mail",
-        "txt-new": "Nouveau",
-        "txt-nav-dashboard": "Tableau de bord",
-        "txt-nav-inbox": "Boîte de réception",
-        "txt-nav-settings": "Paramètres",
-        "txt-nav-fav": "Favoris",
-        "txt-nav-sent": "Envoyés",
-        "txt-nav-trash": "Corbeille",
-        "txt-nav-admin": "Administration",
-        "txt-nav-logout": "Déconnexion",
-        "txt-login-welcome": "Bienvenue",
-        "txt-login-desc": "Connectez-vous à votre portail sécurisé",
-        "txt-login-user": "Nom d'utilisateur",
-        "txt-login-pass": "Mot de passe",
-        "txt-btn-login": "Connexion",
-        "txt-dash-title": "Aperçu du Compte",
-        "txt-dash-activity": "Volume d'emails (7 derniers jours)",
-        "txt-dash-storage": "Utilisation Stockage",
-        "txt-dash-stats": "Statistiques Rapides",
-        "txt-stat-total": "Total Emails",
-        "txt-stat-unread": "Non lus",
-        "txt-set-title": "Paramètres du Compte",
-        "txt-set-name": "Nom d'affichage",
-        "txt-set-lang": "Langue de l'interface",
-        "txt-set-save": "Enregistrer les modifications",
-        "txt-set-dark": "Bascule Mode Sombre",
-        "txt-inbox-title": "Boîte de réception",
-        "search-input": "Rechercher des emails ou des contacts...",
-        "txt-view-to": "à",
-        "txt-view-me": "moi",
-        "txt-compose-title": "Nouveau message",
-        "send-to": "À :",
-        "send-subject": "Objet",
-        "send-content": "Rédiger votre message...",
-        "txt-btn-send": "Envoyer le message",
-        "txt-email-service": "Email de service",
-        "txt-mail-server": "Serveur de Messagerie",
-        "txt-delete-confirm": "Souhaitez-vous supprimer ce message ?",
-        "txt-system-support": "Support Système",
-        "txt-msg-dist": "Email Distribué",
-        "txt-size": "Taille",
-        "txt-bytes": "octets",
-        "txt-storage-of": "sur",
-        "txt-storage-used": "utilisés",
-        "txt-empty-title": "Votre boîte est vide",
-        "txt-empty-desc": "C'est le moment idéal pour démarrer une nouvelle conversation.",
-        "msg-deleted": "Message supprimé",
-        "msg-delete-fail": "Impossible de supprimer le message",
-        "msg-send-success": "Message envoyé !",
-        "msg-send-fail": "Échec de l'envoi SMTP"
-    },
-    en: {
-        "txt-brand-mail": "Mail",
-        "txt-brand-mail-login": "Mail",
-        "txt-new": "New Message",
-        "txt-nav-dashboard": "Dashboard",
-        "txt-nav-inbox": "Inbox",
-        "txt-nav-settings": "Settings",
-        "txt-nav-fav": "Favorites",
-        "txt-nav-sent": "Sent",
-        "txt-nav-trash": "Trash",
-        "txt-nav-logout": "Logout",
-        "txt-login-welcome": "Welcome Back",
-        "txt-login-desc": "Log in to your secure portal",
-        "txt-login-user": "Username",
-        "txt-login-pass": "Password",
-        "txt-btn-login": "Login",
-        "txt-dash-title": "Account Overview",
-        "txt-dash-activity": "Email Volume (Last 7 Days)",
-        "txt-dash-storage": "Storage Usage",
-        "txt-dash-stats": "Quick Stats",
-        "txt-stat-total": "Total Emails",
-        "txt-stat-unread": "Unread",
-        "txt-set-title": "Account Settings",
-        "txt-set-name": "Display Name",
-        "txt-set-lang": "Interface Language",
-        "txt-set-save": "Save Changes",
-        "txt-set-dark": "Toggle Dark Mode",
-        "txt-inbox-title": "Inbox",
-        "search-input": "Search emails or contacts...",
-        "txt-view-to": "to",
-        "txt-view-me": "me",
-        "txt-compose-title": "New Message",
-        "send-to": "To:",
-        "send-subject": "Subject",
-        "send-content": "Type your message here...",
-        "txt-btn-send": "Send Message",
-        "txt-email-service": "Service Email",
-        "txt-mail-server": "Mail Server",
-        "txt-delete-confirm": "Do you want to delete this message?",
-        "txt-system-support": "System Support",
-        "txt-msg-dist": "Distributed Email",
-        "txt-size": "Size",
-        "txt-bytes": "bytes",
-        "txt-storage-of": "of",
-        "txt-storage-used": "used",
-        "txt-empty-title": "Your inbox is empty",
-        "txt-empty-desc": "Perfect time to start a new conversation.",
-        "msg-deleted": "Message deleted",
-        "msg-delete-fail": "Could not delete",
-        "msg-send-success": "Message sent!",
-        "msg-send-fail": "SMTP send failed"
-    },
-    ar: {
-        "txt-brand-mail": "بريد",
-        "txt-brand-mail-login": "بريد",
-        "txt-new": "رسالة جديدة",
-        "txt-nav-dashboard": "لوحة القيادة",
-        "txt-nav-inbox": "صندوق الوارد",
-        "txt-nav-settings": "الإعدادات",
-        "txt-nav-fav": "المفضلة",
-        "txt-nav-sent": "المرسل",
-        "txt-nav-trash": "المحذوفات",
-        "txt-nav-logout": "تسجيل الخروج",
-        "txt-login-welcome": "مرحباً بك",
-        "txt-login-desc": "سجل الدخول إلى بوابتك الآمنة",
-        "txt-login-user": "اسم المستخدم",
-        "txt-login-pass": "كلمة المرور",
-        "txt-btn-login": "دخول",
-        "txt-dash-title": "نظرة عامة على الحساب",
-        "txt-dash-activity": "حجم الرسائل (آخر 7 أيام)",
-        "txt-dash-storage": "استخدام المساحة",
-        "txt-dash-stats": "إحصائيات سريعة",
-        "txt-stat-total": "إجمالي الرسائل",
-        "txt-stat-unread": "غير مقروءة",
-        "txt-set-title": "إعدادات الحساب",
-        "txt-set-name": "الاسم المستعار",
-        "txt-set-lang": "لغة الواجهة",
-        "txt-set-save": "حفظ التغييرات",
-        "txt-set-dark": "تبديل الوضع الليلي",
-        "txt-inbox-title": "صندوق الوارد",
-        "search-input": "ابحث في الرسائل أو جهات الاتصال...",
-        "txt-view-to": "إلى",
-        "txt-view-me": "أنا",
-        "txt-compose-title": "رسالة جديدة",
-        "send-to": "إلى:",
-        "send-subject": "الموضوع",
-        "send-content": "اكتب رسالتك هنا...",
-        "txt-btn-send": "إرسال الرسالة",
-        "txt-email-service": "بريد الخدمة",
-        "txt-mail-server": "خادم البريد",
-        "txt-delete-confirm": "هل تريد حذف هذه الرسالة؟",
-        "txt-system-support": "دعم النظام",
-        "txt-msg-dist": "رسالة موزعة",
-        "txt-size": "الحجم",
-        "txt-bytes": "بايت",
-        "txt-storage-of": "من",
-        "txt-storage-used": "مستخدمة",
-        "txt-empty-title": "صندوق الوارد فارغ",
-        "txt-empty-desc": "الوقت مثالي لبدء محادثة جديدة.",
-        "msg-deleted": "تم حذف الرسالة",
-        "msg-delete-fail": "تعذر الحذف",
-        "msg-send-success": "تم الإرسال!",
-        "msg-send-fail": "فشل إرسال SMTP"
-    }
-};
+let currentFolder = 'inbox';
+// --- Internationalization (i18n) handled in translations.js ---
+
 
 let currentLang = localStorage.getItem('app_lang') || 'fr';
 
@@ -516,7 +309,8 @@ function translateUI() {
     }
     // Handle RTL for Arabic
     document.body.dir = (currentLang === 'ar') ? 'rtl' : 'ltr';
-    document.getElementById('language-select').value = currentLang;
+    const langSelect = document.getElementById('language-select');
+    if (langSelect) langSelect.value = currentLang;
 }
 
 function changeLanguage(lang) {
@@ -556,6 +350,12 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
             authToken = data.token;
             localStorage.setItem('auth_token', authToken);
             localStorage.setItem('auth_user', user);
+            
+            if (user === 'admin') {
+                window.location.href = "/admin.html";
+                return;
+            }
+
             showApp();
             loadInbox();
             showToast(`Bienvenue, ${user}`, 'success');
@@ -636,18 +436,79 @@ if (registerForm) {
 }
 
 function showApp() {
-    document.getElementById('login-page').style.display = 'none';
     const user = localStorage.getItem('auth_user') || 'U';
-    document.getElementById('user-initials').textContent = user.charAt(0).toUpperCase();
     
-    // Admin specific UI
     if (user === 'admin') {
-        const navAdmin = document.getElementById('nav-admin');
-        if (navAdmin) navAdmin.style.display = 'flex';
+        window.location.href = "/admin.html";
+        return;
+    }
+
+    document.getElementById('login-page').style.display = 'none';
+    document.getElementById('landing-page').style.display = 'none';
+    
+    const avatar = localStorage.getItem(`profile_img_${user}`);
+    const initialsEl = document.getElementById('user-initials');
+    if (avatar) {
+        initialsEl.innerHTML = `<img src="${avatar}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+    } else {
+        initialsEl.textContent = user.charAt(0).toUpperCase();
     }
 
     startInboxPolling();
     initWebSockets();
+    updateStorageUI();
+}
+
+function previewAvatar(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const preview = document.getElementById('settings-avatar-preview');
+            preview.innerHTML = `<img src="${e.target.result}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+            localStorage.setItem('temp_avatar', e.target.result);
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+function togglePasswordVisibility(id) {
+    const input = document.getElementById(id);
+    const icon = input.nextElementSibling;
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+    } else {
+        input.type = 'password';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+    }
+}
+
+async function saveSettings() {
+    const displayName = document.getElementById('settings-display-name').value;
+    const lang = document.getElementById('language-select').value;
+    const profileImage = localStorage.getItem('temp_avatar') || document.getElementById('settings-avatar-preview').style.backgroundImage.replace(/url\(['"](.+)['"]\)/, '$1');
+    
+    // Sync with server
+    try {
+        await fetch(`${API_URL}/user/profile`, {
+            method: 'POST',
+            headers: { 
+                'Authorization': authToken,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ displayName, profileImage })
+        });
+        localStorage.removeItem('temp_avatar');
+    } catch (e) {
+        console.error("Erreur sync profil:", e);
+    }
+
+    if (displayName) {
+        document.getElementById('user-initials').textContent = displayName.charAt(0).toUpperCase();
+    }
+    
+    changeLanguage(lang);
+    showToast(currentLang === 'en' ? 'Settings saved' : 'Paramètres enregistrés', 'success');
 }
 
 let wsSocket = null;
@@ -720,30 +581,8 @@ async function pollInboxCount() {
 }
 
 // --- Email Logic ---
-// --- Search Logic ---
-document.querySelector('.search-bar input').addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
-    const filtered = currentMessages.filter(msg => 
-        (msg.id && msg.id.toString().includes(term)) || 
-        (msg.subject && msg.subject.toLowerCase().includes(term)) ||
-        (msg.from && msg.from.toLowerCase().includes(term)) ||
-        (msg.date && msg.date.toLowerCase().includes(term))
-    );
-    
-    if (filtered.length === 0 && term !== "") {
-        document.getElementById('messages-container').innerHTML = `
-            <div class="empty-state animate__animated animate__fadeIn">
-                <i class="fas fa-search"></i>
-                <h3>Aucun résultat</h3>
-                <p>Nous n'avons rien trouvé pour "${term}".</p>
-            </div>
-        `;
-    } else {
-        renderMessageList(filtered);
-    }
-});
-
 async function loadInbox() {
+
     const container = document.getElementById('messages-container');
     // Si on change de catégorie, on ne recharge pas forcément tout, mais ici on le fait pour synchro
     if (!currentMessages.length) {
@@ -787,9 +626,13 @@ function switchCategory(cat) {
 }
 
 function getCategory(msg) {
+    if (msg.category && msg.category !== 'primary') return msg.category;
+    
+    // Heuristic fallback
     const from = (msg.from || "").toLowerCase();
-    if (from.match(/facebook|linkedin|twitter|instagram|social|network/)) return 'social';
-    if (from.match(/noreply|marketing|newsletter|amazon|google|promo|offer/)) return 'promotions';
+    const subject = (msg.subject || "").toLowerCase();
+    if (from.match(/facebook|linkedin|twitter|instagram|social|network|github/)) return 'social';
+    if (from.match(/noreply|marketing|newsletter|amazon|google|promo|offer/) || subject.match(/offre|promotion|remise/)) return 'promotions';
     return 'primary';
 }
 
@@ -805,44 +648,45 @@ function renderMessageList(messagesToRender = null) {
     }
 
     if (list.length === 0) {
-        const lang = translations[currentLang];
-        const emptyIcons = {
-            'primary': 'fa-envelope-open-text',
-            'social': 'fa-users',
-            'promotions': 'fa-tag'
-        };
         container.innerHTML = `
-            <div class="empty-state animate__animated animate__fadeIn" style="padding:100px 20px;">
-                <div style="background:var(--bg-main); width:120px; height:120px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 24px;">
-                    <i class="fas ${emptyIcons[currentCategory] || 'fa-folder-open'}" style="font-size: 48px; color:var(--text-secondary); opacity:0.5;"></i>
-                </div>
-                <h3>${lang["txt-empty-title"]}</h3>
-                <p style="max-width:300px; margin:10px auto;">${lang["txt-empty-desc"]}</p>
+            <div class="empty-state animate__animated animate__fadeIn">
+                <i class="fas fa-inbox"></i>
+                <h3>Votre boîte est vide</h3>
+                <p>Parfait pour commencer de nouvelles conversations.</p>
             </div>
         `;
         return;
     }
 
     list.forEach((msg, idx) => {
-        const lang = translations[currentLang];
         const item = document.createElement('div');
         item.className = `email-item animate__animated animate__fadeInUp`;
-        item.style.animationDelay = `${idx * 0.05}s`;
+        item.style.animationDelay = `${idx * 0.03}s`;
+        if (msg.unread) item.classList.add('unread');
         
-                const senderName = msg.from || `#${msg.id}`;
-        const senderInitial = senderName.charAt(0).toUpperCase();
-        const displayDate = msg.date ? formatEmailDate(msg.date) : new Date().toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'});
+        const senderName = msg.from || `Expéditeur Inconnu`;
+        const displayDate = msg.date ? formatEmailDate(msg.date) : "...";
+        
         item.innerHTML = `
-            <div class="email-avatar-mini" style="width:36px;height:36px;background:linear-gradient(135deg,#1a73e8,#9333ea);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;flex-shrink:0;">${senderInitial}</div>
-            <div class="email-sender" style="font-weight:600;">${senderName}</div>
-            <div class="email-summary">
-                <span class="email-subject">${msg.subject || '(sans objet)'}</span>
+            <div class="email-checkbox-wrapper" onclick="event.stopPropagation()">
+                <input type="checkbox" class="email-checkbox">
             </div>
-            <div class="email-time">${displayDate}</div>
+            <div class="email-star-wrapper ${msg.starred ? 'starred' : ''}" onclick="event.stopPropagation(); toggleStarred(${msg.dbId}, this)">
+                <i class="${msg.starred ? 'fas' : 'far'} fa-star"></i>
+            </div>
+            <div class="email-sender" style="width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${senderName}</div>
+            <div class="email-summary" style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <span class="email-subject">${msg.subject}</span>
+                <span style="color: var(--text-secondary); margin-left: 8px; opacity:0.6; font-size:12px;">[${msg.category || 'primary'}]</span>
+            </div>
+            <div class="email-time" style="width: 100px; text-align: right; font-size: 12px; color: var(--text-secondary);">${displayDate}</div>
             <div class="email-actions">
                 <div class="icon-btn" title="Archiver"><i class="fas fa-archive"></i></div>
                 <div class="icon-btn" title="Supprimer" onclick="event.stopPropagation(); deleteMessageDirectly(${msg.id})">
                     <i class="far fa-trash-alt"></i>
+                </div>
+                <div class="icon-btn" title="Favoris" onclick="event.stopPropagation(); toggleStarred(${msg.dbId}, this)">
+                    <i class="far fa-star"></i>
                 </div>
                 <div class="icon-btn" title="Marquer comme lu"><i class="far fa-envelope-open"></i></div>
             </div>
@@ -1070,6 +914,27 @@ async function loadDashboardStats() {
         const stats = await response.json();
         const lang = translations[currentLang];
 
+        // Update Global Profile UI
+        if (stats.profileImage) {
+            const avatarDivs = [document.getElementById('user-initials'), document.getElementById('settings-avatar-preview')];
+            avatarDivs.forEach(div => {
+                if (div) {
+                    div.style.backgroundImage = `url(${stats.profileImage})`;
+                    div.style.backgroundSize = 'cover';
+                    div.style.backgroundPosition = 'center';
+                    div.textContent = '';
+                }
+            });
+        }
+        if (stats.displayName) {
+            const nameInput = document.getElementById('settings-display-name');
+            if (nameInput) nameInput.value = stats.displayName;
+            const userInitials = document.getElementById('user-initials');
+            if (userInitials && !stats.profileImage) {
+                userInitials.textContent = stats.displayName.charAt(0).toUpperCase();
+            }
+        }
+
         // Update Text Stats
         document.getElementById('stat-total-emails').textContent = stats.totalEmails;
         document.getElementById('stat-unread-emails').textContent = stats.unreadEmails;
@@ -1077,6 +942,14 @@ async function loadDashboardStats() {
         const sizeMB = (stats.totalSize / (1024 * 1024)).toFixed(2);
         const limitMB = (stats.storageLimit / (1024 * 1024)).toFixed(0);
         document.getElementById('storageText').textContent = `${sizeMB} Mo ${lang["txt-storage-of"]} ${limitMB} Mo ${lang["txt-storage-used"]}`;
+
+        // Sidebar Storage Update
+        const pct = Math.min((stats.totalSize / stats.storageLimit) * 100, 100);
+        const sideFill = document.getElementById('side-storage-fill');
+        if (sideFill) {
+            sideFill.style.width = `${pct}%`;
+            sideFill.style.background = pct > 90 ? 'var(--error)' : 'var(--primary)';
+        }
 
         initCharts(stats);
     } catch (err) {
