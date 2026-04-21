@@ -224,7 +224,8 @@ class SmtpSession extends Thread {
         // --- DEBUT RMI CHECK ---
         String username = email.split("@")[0];
         try {
-            java.rmi.registry.Registry registry = java.rmi.registry.LocateRegistry.getRegistry("127.0.0.1", 1099);
+            String rmiHost = System.getenv("RMI_HOST") != null ? System.getenv("RMI_HOST") : "localhost";
+            java.rmi.registry.Registry registry = java.rmi.registry.LocateRegistry.getRegistry(rmiHost, 1099);
             org.example.auth.IAuthService authService = (org.example.auth.IAuthService) registry.lookup("AuthService");
             if (!authService.userExists(username)) {
                 send("550 No such user here");

@@ -42,6 +42,12 @@ public class DatabaseManager {
 
     // Store Email
     public static boolean storeEmail(String sender, String recipient, String subject, String content) {
+        // Enforce quota
+        if (isQuotaExceeded(recipient, content.length())) {
+            System.err.println("QUOTA EXCEEDED for user: " + recipient);
+            return false;
+        }
+
         String sql = "{CALL store_email(?, ?, ?, ?)}";
         try (Connection conn = getConnection();
              CallableStatement stmt = conn.prepareCall(sql)) {
@@ -55,6 +61,26 @@ public class DatabaseManager {
             e.printStackTrace();
             return false;
         }
+    }
+
+    public static boolean isQuotaExceeded(String username, int incomingSize) {
+        String sql = "SELECT (SELECT quota_limit FROM users WHERE username = ?) as limit_val, " +
+                     "       (SELECT IFNULL(SUM(LENGTH(content)), 0) FROM emails WHERE recipient = ?) as current_size";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, username);
+            stmt.setString(2, username);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    long limit = rs.getLong("limit_val");
+                    long current = rs.getLong("current_size");
+                    return (current + incomingSize) > limit;
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
     }
 
     // Fetch Emails
@@ -73,6 +99,8 @@ public class DatabaseManager {
                     email.put("subject", rs.getString("subject"));
                     email.put("content", rs.getString("content"));
                     email.put("is_read", rs.getBoolean("is_read"));
+                    email.put("is_starred", rs.getBoolean("is_starred"));
+                    email.put("category", rs.getString("category"));
                     email.put("created_at", rs.getTimestamp("created_at"));
                     emails.add(email);
                 }
@@ -81,6 +109,45 @@ public class DatabaseManager {
             e.printStackTrace();
         }
         return emails;
+    }
+
+    public static List<Map<String, Object>> fetchSentEmails(String username) {
+        List<Map<String, Object>> emails = new ArrayList<>();
+        String sql = "SELECT * FROM emails WHERE sender = ? OR sender LIKE CONCAT(?, '@%') ORDER BY created_at DESC";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, username);
+            stmt.setString(2, username);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> email = new HashMap<>();
+                    email.put("id", rs.getInt("id"));
+                    email.put("sender", rs.getString("sender"));
+                    email.put("recipient", rs.getString("recipient"));
+                    email.put("subject", rs.getString("subject"));
+                    email.put("content", rs.getString("content"));
+                    email.put("is_read", rs.getBoolean("is_read"));
+                    email.put("is_starred", rs.getBoolean("is_starred"));
+                    email.put("category", rs.getString("category"));
+                    email.put("created_at", rs.getTimestamp("created_at"));
+                    emails.add(email);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return emails;
+    }
+
+    public static boolean toggleStar(int emailId) {
+        String sql = "UPDATE emails SET is_starred = NOT is_starred WHERE id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, emailId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            return false;
+        }
     }
 
     // Delete Email
@@ -156,6 +223,21 @@ public class DatabaseManager {
                 }
             }
             
+            // Get Profile Data
+            String sqlProfile = "SELECT quota_limit, display_name, profile_image FROM users WHERE username = ?";
+            try (PreparedStatement stmtP = conn.prepareStatement(sqlProfile)) {
+                stmtP.setString(1, username);
+                try (ResultSet rsP = stmtP.executeQuery()) {
+                    if (rsP.next()) {
+                        stats.put("storageLimit", rsP.getLong("quota_limit"));
+                        stats.put("displayName", rsP.getString("display_name"));
+                        stats.put("profileImage", rsP.getString("profile_image"));
+                    } else {
+                        stats.put("storageLimit", 52428800L);
+                    }
+                }
+            }
+
             // Unread count
             String sqlUnread = "SELECT COUNT(*) FROM emails WHERE recipient = ? AND is_read = 0";
             try (PreparedStatement stmt2 = conn.prepareStatement(sqlUnread)) {
@@ -170,6 +252,56 @@ public class DatabaseManager {
             e.printStackTrace();
         }
         return stats;
+    }
+
+    public static void broadcastMessage(String subject, String content) {
+        String getUsersSql = "SELECT username FROM users";
+        String insertSql = "INSERT INTO emails (sender, recipient, subject, content) VALUES (?, ?, ?, ?)";
+        try (Connection conn = getConnection();
+             PreparedStatement getStmt = conn.prepareStatement(getUsersSql);
+             PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
+            
+            ResultSet rs = getStmt.executeQuery();
+            while (rs.next()) {
+                String recipient = rs.getString("username");
+                insertStmt.setString(1, "SYSTEM <admin@emp.dz>");
+                insertStmt.setString(2, recipient);
+                insertStmt.setString(3, subject);
+                insertStmt.setString(4, content);
+                insertStmt.addBatch();
+            }
+            insertStmt.executeBatch();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    public static boolean updateUserQuota(String username, long newLimit) {
+        String sql = "UPDATE users SET quota_limit = ? WHERE username = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, newLimit);
+            stmt.setString(2, username);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public static boolean updateUserProfile(String username, String displayName, String profileImage) {
+        String sql = "UPDATE users SET display_name = ?, profile_image = ? WHERE username = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, displayName);
+            stmt.setString(2, profileImage);
+            stmt.setString(3, username);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     // Delete User
@@ -189,10 +321,10 @@ public class DatabaseManager {
     // Admin : Get detailed stats for all users
     public static java.util.List<java.util.Map<String, Object>> getUsersDetailedStats() {
         java.util.List<java.util.Map<String, Object>> allStats = new java.util.ArrayList<>();
-        String sql = "SELECT u.username, COUNT(e.id) as mail_count, SUM(IFNULL(LENGTH(e.content), 0)) as storage_used " +
+        String sql = "SELECT u.username, u.quota_limit, u.profile_image, COUNT(e.id) as mail_count, SUM(IFNULL(LENGTH(e.content), 0)) as storage_used " +
                      "FROM users u " +
                      "LEFT JOIN emails e ON u.username = e.recipient " +
-                     "GROUP BY u.username " +
+                     "GROUP BY u.username, u.quota_limit, u.profile_image " +
                      "ORDER BY mail_count DESC";
 
         try (Connection conn = getConnection();
@@ -202,6 +334,8 @@ public class DatabaseManager {
             while (rs.next()) {
                 java.util.Map<String, Object> site = new java.util.HashMap<>();
                 site.put("username", rs.getString("username"));
+                site.put("quota_limit", rs.getLong("quota_limit"));
+                site.put("profile_image", rs.getString("profile_image"));
                 site.put("count", rs.getInt("mail_count"));
                 site.put("size", rs.getLong("storage_used"));
                 allStats.add(site);

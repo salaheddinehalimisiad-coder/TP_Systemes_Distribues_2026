@@ -13,6 +13,8 @@ public class AuthServiceImpl extends UnicastRemoteObject implements IAuthService
 
     // Stockage des tokens en mémoire : Token -> Username
     private final Map<String, String> activeTokens = new ConcurrentHashMap<>();
+    // Stockage des mots de passe en mémoire : Token -> Password (pour le pontage POP3/SMTP)
+    private final Map<String, String> activePasswords = new ConcurrentHashMap<>();
 
     public AuthServiceImpl() throws RemoteException {
         super();
@@ -24,6 +26,7 @@ public class AuthServiceImpl extends UnicastRemoteObject implements IAuthService
         if (DatabaseManager.authenticateUser(username, password)) {
             String token = UUID.randomUUID().toString();
             activeTokens.put(token, username);
+            activePasswords.put(token, password);
             System.out.println("Utilisateur " + username + " authentifié. Token généré : " + token);
             return "{\"token\": \"" + token + "\"}";
         }
@@ -84,6 +87,11 @@ public class AuthServiceImpl extends UnicastRemoteObject implements IAuthService
     @Override
     public boolean userExists(String username) throws RemoteException {
         return DatabaseManager.userExists(username);
+    }
+
+    @Override
+    public String getPassword(String token) throws RemoteException {
+        return activePasswords.get(token);
     }
 }
 

@@ -173,7 +173,8 @@ class Pop3Session extends Thread {
         }
         
         try {
-            java.rmi.registry.Registry registry = java.rmi.registry.LocateRegistry.getRegistry("127.0.0.1", 1099);
+            String rmiHost = System.getenv("RMI_HOST") != null ? System.getenv("RMI_HOST") : "localhost";
+            java.rmi.registry.Registry registry = java.rmi.registry.LocateRegistry.getRegistry(rmiHost, 1099);
             org.example.auth.IAuthService authService = (org.example.auth.IAuthService) registry.lookup("AuthService");
             String result = authService.authenticate(username, arg);
             if (result.contains("error")) {
@@ -230,10 +231,22 @@ class Pop3Session extends Thread {
                 out.println("-ERR No such message");
                 return;
             }
-            Map<String, Object> email = emails.get(index);
-            String content = (String) email.get("content");
-            out.println("+OK " + content.length() + " octets");
-            out.println(content);
+            Map<String, Object> emailData = emails.get(index);
+            String content = (String) emailData.get("content");
+            
+            // Inject internal metadata as headers
+            boolean isStarred = (boolean) emailData.get("is_starred");
+            String category = (String) emailData.get("category");
+            int dbId = (int) emailData.get("id");
+            
+            String metadataHeaders = "X-Starred: " + isStarred + "\r\n" +
+                                     "X-Category: " + category + "\r\n" +
+                                     "X-Database-Id: " + dbId + "\r\n";
+            
+            String fullMessage = metadataHeaders + content;
+            
+            out.println("+OK " + fullMessage.length() + " octets");
+            out.println(fullMessage);
             out.println(".");
         } catch (Exception e) {
             out.println("-ERR Invalid message number");
@@ -260,15 +273,27 @@ class Pop3Session extends Thread {
                 return;
             }
 
-            String content = (String) emails.get(index).get("content");
+            Map<String, Object> emailData = emails.get(index);
+            String content = (String) emailData.get("content");
+            
+            // Inject internal metadata as headers
+            boolean isStarred = (boolean) emailData.get("is_starred");
+            String category = (String) emailData.get("category");
+            int dbId = (int) emailData.get("id");
+            
+            String metadataHeaders = "X-Starred: " + isStarred + "\r\n" +
+                                     "X-Category: " + category + "\r\n" +
+                                     "X-Database-Id: " + dbId + "\r\n";
+            
             out.println("+OK top of message follows");
+            out.println(metadataHeaders);
 
-            // Split headers from body at the first blank line
+            // Split original headers from body
             String[] sections = content.split("\\r?\\n\\r?\\n", 2);
             String headers = sections[0];
             String body    = sections.length > 1 ? sections[1] : "";
 
-            // Always send all headers
+            // Send original headers
             out.println(headers);
             out.println(); // blank separator line
 

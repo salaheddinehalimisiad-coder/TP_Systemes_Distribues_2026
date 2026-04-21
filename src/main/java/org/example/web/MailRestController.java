@@ -13,6 +13,7 @@ import java.net.Socket;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.Map;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -29,8 +30,6 @@ public class MailRestController {
     private static final String SMTP_HOST = System.getenv("SMTP_HOST") != null ? System.getenv("SMTP_HOST") : "localhost";
     private static final int SMTP_PORT = 2525;
 
-    // Stockage temporaire des mots de passe pour l'authentification socket (POP3)
-    private static final Map<String, String> sessionPasswords = new ConcurrentHashMap<>();
     
     // WebSocket Sessions: User -> Set of contexts
     private static final Map<String, Set<WsContext>> userWsSessions = new ConcurrentHashMap<>();
@@ -40,7 +39,15 @@ public class MailRestController {
 
         int port = (args.length > 0) ? Integer.parseInt(args[0]) : 8080;
         Javalin app = Javalin.create(config -> {
-            config.addStaticFiles("/web", Location.CLASSPATH); 
+            // Support pour le développement (Docker volumes) : utilise le dossier externe s'il existe
+            String externalPath = "/app/src/main/resources/web";
+            if (new File(externalPath).exists()) {
+                config.addStaticFiles(externalPath, Location.EXTERNAL);
+                System.out.println("📂 Utilisation des fichiers statiques EXTERNES : " + externalPath);
+            } else {
+                config.addStaticFiles("/web", Location.CLASSPATH);
+                System.out.println("📦 Utilisation des fichiers statiques du CLASSPATH");
+            }
             config.enableCorsForAllOrigins();
         }).start(port);
 
@@ -48,6 +55,7 @@ public class MailRestController {
         app.post("/api/login", MailRestController::login);
         app.post("/api/register", MailRestController::register);
         app.get("/api/inbox", MailRestController::getInbox);
+        app.get("/api/sent", MailRestController::getSentItems);
         app.get("/api/messages/{id}", ctx -> getMessage(ctx));
         app.post("/api/messages/{id}/delete", ctx -> deleteMessage(ctx));
         app.post("/api/send", ctx -> sendMessage(ctx));
@@ -56,7 +64,13 @@ public class MailRestController {
         app.get("/api/contacts", ctx -> getContacts(ctx));
         app.get("/api/inbox/count", ctx -> getInboxCount(ctx));
         app.get("/api/admin/users", MailRestController::getAdminUsers);
+        app.post("/api/admin/users/{username}/quota", MailRestController::updateUserQuota);
+        app.post("/api/admin/users/{username}/delete", MailRestController::deleteAdminUser);
+        app.post("/api/admin/broadcast", MailRestController::sendBroadcastMessage);
         app.get("/api/admin/cluster", MailRestController::getClusterStatus);
+        
+        app.post("/api/user/profile", MailRestController::updateProfile);
+        app.post("/api/emails/{id}/star", MailRestController::toggleStar);
         
         // Internal route for SMTP notifications
         app.post("/api/internal/notify", MailRestController::handleInternalNotification);
@@ -144,10 +158,6 @@ public class MailRestController {
         }
 
         String res = authService.authenticate(user, pass);
-        JSONObject jsonRes = new JSONObject(res);
-        if (jsonRes.has("token")) {
-            sessionPasswords.put(jsonRes.getString("token"), pass);
-        }
         ctx.result(res).contentType("application/json");
     }
 
@@ -188,7 +198,7 @@ public class MailRestController {
         }
 
         String username = authService.getUsernameFromToken(token);
-        String password = sessionPasswords.get(token);
+        String password = authService.getPassword(token);
         if (password == null) {
             ctx.status(401).result("{\"error\": \"Session expiree, veuillez vous reconnecter.\"}");
             return;
@@ -229,6 +239,9 @@ public class MailRestController {
                 String from    = "Expéditeur inconnu";
                 String subject = "(sans objet)";
                 String date    = "";
+                boolean starred = false;
+                String category = "primary";
+                int dbId = -1;
 
                 if (topRes.startsWith("+OK")) {
                     String hLine;
@@ -240,15 +253,24 @@ public class MailRestController {
                             subject = hLine.substring(8).trim();
                         else if (lower.startsWith("date:"))
                             date = hLine.substring(5).trim();
+                        else if (lower.startsWith("x-starred:"))
+                            starred = Boolean.parseBoolean(hLine.substring(10).trim());
+                        else if (lower.startsWith("x-category:"))
+                            category = hLine.substring(11).trim();
+                        else if (lower.startsWith("x-database-id:"))
+                            dbId = Integer.parseInt(hLine.substring(14).trim());
                     }
                 }
 
                 JSONObject msg = new JSONObject();
                 msg.put("id", msgId);
+                msg.put("dbId", dbId);
                 msg.put("size", size);
                 msg.put("from", from);
                 msg.put("subject", subject.isEmpty() ? "(sans objet)" : subject);
                 msg.put("date", date);
+                msg.put("starred", starred);
+                msg.put("category", category);
                 messages.put(msg);
             }
 
@@ -258,6 +280,31 @@ public class MailRestController {
         } catch (Exception e) {
             ctx.status(500).result("{\"error\": \"" + e.getMessage() + "\"}");
         }
+    }
+    
+    private static void getSentItems(Context ctx) throws Exception {
+        String token = ctx.header("Authorization");
+        if (token == null || !authService.verifyToken(token)) {
+            ctx.status(401).result("{\"error\": \"Non autorisé\"}");
+            return;
+        }
+        String username = authService.getUsernameFromToken(token);
+        List<Map<String, Object>> sentEmails = DatabaseManager.fetchSentEmails(username);
+        
+        JSONArray messages = new JSONArray();
+        for (Map<String, Object> email : sentEmails) {
+            JSONObject msg = new JSONObject();
+            msg.put("id", email.get("id"));
+            msg.put("sender", email.get("sender"));
+            msg.put("recipient", email.get("recipient"));
+            msg.put("subject", email.get("subject"));
+            msg.put("content", email.get("content"));
+            msg.put("date", email.get("created_at").toString());
+            msg.put("starred", email.get("is_starred"));
+            msg.put("category", email.get("category"));
+            messages.put(msg);
+        }
+        ctx.result(messages.toString()).contentType("application/json");
     }
 
     private static void getMessage(Context ctx) throws Exception {
@@ -270,14 +317,14 @@ public class MailRestController {
         }
 
         String username = authService.getUsernameFromToken(token);
-        String password = sessionPasswords.get(token);
+        String password = authService.getPassword(token);
         if (password == null) {
             ctx.status(401).result("{\"error\": \"Session expirée\"}");
             return;
         }
 
         try (Socket socket = new Socket(POP3_HOST, POP3_PORT);
-             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
              PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
 
             in.readLine();
@@ -335,7 +382,7 @@ public class MailRestController {
         }
 
         String username = authService.getUsernameFromToken(token);
-        String password = sessionPasswords.get(token);
+        String password = authService.getPassword(token);
         if (password == null) {
             ctx.status(401).result("{\"error\": \"Session expirée\"}");
             return;
@@ -453,13 +500,14 @@ public class MailRestController {
     private static void getInboxCount(Context ctx) {
         String token = ctx.header("Authorization");
         if (token == null) { ctx.status(401).result("{}"); return; }
+        String password;
         String username;
         try {
             if (!authService.verifyToken(token)) { ctx.status(401).result("{}"); return; }
             username = authService.getUsernameFromToken(token);
+            password = authService.getPassword(token);
         } catch (Exception e) { ctx.status(500).result("{}"); return; }
 
-        String password = sessionPasswords.get(token);
         if (password == null) { ctx.status(401).result("{}"); return; }
 
         try (Socket socket = new Socket(POP3_HOST, POP3_PORT);
@@ -546,6 +594,95 @@ public class MailRestController {
         res.put("currentNode", System.getenv("HOSTNAME") != null ? System.getenv("HOSTNAME") : "localhost");
         
         ctx.result(res.toString()).contentType("application/json");
+    }
+
+    private static void updateUserQuota(Context ctx) throws Exception {
+        String token = ctx.header("Authorization");
+        if (token == null || !authService.verifyToken(token) || !"admin".equals(authService.getUsernameFromToken(token))) {
+            ctx.status(403).result("{\"error\": \"Non autorisé\"}");
+            return;
+        }
+        String targetUser = ctx.pathParam("username");
+        JSONObject body = new JSONObject(ctx.body());
+        long newLimit = body.getLong("limit");
+
+        boolean ok = DatabaseManager.updateUserQuota(targetUser, newLimit);
+        if (ok) {
+            ctx.result("{\"success\": true}");
+        } else {
+            ctx.status(500).result("{\"error\": \"Échec mise à jour quota\"}");
+        }
+    }
+
+    private static void deleteAdminUser(Context ctx) throws Exception {
+        String token = ctx.header("Authorization");
+        if (token == null || !authService.verifyToken(token) || !"admin".equals(authService.getUsernameFromToken(token))) {
+            ctx.status(403).result("{\"error\": \"Non autorisé\"}");
+            return;
+        }
+        String targetUser = ctx.pathParam("username");
+        if ("admin".equals(targetUser)) {
+            ctx.status(400).result("{\"error\": \"Impossible de supprimer le compte admin principal\"}");
+            return;
+        }
+
+        boolean ok = DatabaseManager.deleteUser(targetUser);
+        if (ok) {
+            ctx.result("{\"success\": true}");
+        } else {
+            ctx.status(500).result("{\"error\": \"Échec suppression utilisateur\"}");
+        }
+    }
+
+    private static void updateProfile(Context ctx) throws Exception {
+        String token = ctx.header("Authorization");
+        if (token == null || !authService.verifyToken(token)) {
+            ctx.status(401).result("{\"error\": \"Non autorisé\"}");
+            return;
+        }
+        String username = authService.getUsernameFromToken(token);
+        JSONObject body = new JSONObject(ctx.body());
+        String displayName = body.optString("displayName", "");
+        String profileImage = body.optString("profileImage", "");
+
+        boolean ok = DatabaseManager.updateUserProfile(username, displayName, profileImage);
+        if (ok) {
+            ctx.result("{\"success\": true}");
+        } else {
+            ctx.status(500).result("{\"error\": \"Échec mise à jour profil\"}");
+        }
+    }
+    
+    private static void sendBroadcastMessage(Context ctx) throws Exception {
+        String token = ctx.header("Authorization");
+        if (token == null || !authService.verifyToken(token)) {
+            ctx.status(401).result("{\"error\": \"Non autorisé\"}");
+            return;
+        }
+        String adminUsername = authService.getUsernameFromToken(token);
+        if (!adminUsername.equals("admin")) {
+            ctx.status(403).result("{\"error\": \"Droits insuffisants\"}");
+            return;
+        }
+
+        JSONObject body = new JSONObject(ctx.body());
+        String subject = body.getString("subject");
+        String content = body.getString("content");
+
+        DatabaseManager.broadcastMessage(subject, content);
+        ctx.result("{\"success\": true}");
+    }
+
+    private static void toggleStar(Context ctx) throws Exception {
+        String token = ctx.header("Authorization");
+        if (token == null || !authService.verifyToken(token)) {
+            ctx.status(401).result("{\"error\": \"Non autorisé\"}");
+            return;
+        }
+        int dbId = Integer.parseInt(ctx.pathParam("id"));
+        boolean ok = DatabaseManager.toggleStar(dbId);
+        if (ok) ctx.result("{\"success\": true}");
+        else ctx.status(500).result("{\"error\": \"Échec toggle star\"}");
     }
 
     private static void handleInternalNotification(Context ctx) {

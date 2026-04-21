@@ -39,4 +39,9 @@ public interface IAuthService extends Remote {
      * Vérifie si un utilisateur existe (sans mot de passe).
      */
     boolean userExists(String username) throws RemoteException;
+
+    /**
+     * Retourne le mot de passe associé à un token (pour le pontage POP3/SMTP).
+     */
+    String getPassword(String token) throws RemoteException;
 }
